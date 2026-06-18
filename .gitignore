@@ -1,0 +1,27 @@
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Modèles YOLO (trop lourds pour git)
+*.pt
+*.onnx
+*.engine
+
+# Fichiers temporaires
+_tmp_crop.png
+*.tmp
+
+# AB Method (interne)
+.ab-method/
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
