@@ -18,13 +18,7 @@ _tmp_crop.png
 .ab-method/
 .claude/
 
-# CI/CD et déploiement (non prêt)
-.github/
-
-# Flask API (en développement)
-app.py
-Dockerfile
-requirements.txt
+# Tests locaux uniquement
 test_app.py
 
 # Docs internes

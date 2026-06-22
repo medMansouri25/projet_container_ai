@@ -1,0 +1,42 @@
+name: CI/CD SmartContainer_AI
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: mansourimed25/smartcontainer-ai:latest
+
+      - name: Deploy on VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            docker pull mansourimed25/smartcontainer-ai:latest
+            docker stop smartcontainer || true
+            docker rm smartcontainer || true
+            docker run -d \
+              --name smartcontainer \
+              --restart unless-stopped \
+              -p 5001:5000 \
+              mansourimed25/smartcontainer-ai:latest
