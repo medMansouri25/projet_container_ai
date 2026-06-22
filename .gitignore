@@ -14,9 +14,30 @@ __pycache__/
 _tmp_crop.png
 *.tmp
 
-# AB Method (interne)
+# AB Method / Claude (interne)
 .ab-method/
 .claude/
+
+# CI/CD et déploiement (non prêt)
+.github/
+
+# Flask API (en développement)
+app.py
+Dockerfile
+requirements.txt
+test_app.py
+
+# Docs internes
+docs/
+CONTEXT.md
+ReformulationBesoins.md
+
+# Sorties entraînement YOLO
+TestYolo/runs/
+runs/
+
+# Cache YOLO (recréé automatiquement)
+*.cache
 
 # IDE
 .vscode/
