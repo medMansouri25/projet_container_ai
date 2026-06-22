@@ -31,6 +31,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          debug: true
           script: |
             docker pull mansourimed25/smartcontainer-ai:latest
             docker stop smartcontainer || true
