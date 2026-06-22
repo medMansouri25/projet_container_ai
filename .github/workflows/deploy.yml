@@ -32,6 +32,14 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H 37.60.246.169 >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@37.60.246.169 "
+            # Sync code source dans stage-med/
+            if [ -d /root/stage-med/.git ]; then
+              cd /root/stage-med && git pull origin main
+            else
+              git clone https://github.com/medMansouri25/ProjetContainer_AI.git /root/stage-med
+            fi
+
+            # Redeploy Docker container
             docker pull mansourimed25/smartcontainer-ai:latest
             docker stop smartcontainer || true
             docker rm smartcontainer || true
