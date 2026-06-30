@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YOLO — Galerie & Entraînement</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; }
+
+    header {
+      background: #1a1a2e; color: #fff;
+      padding: 16px 24px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    header h1 { font-size: 1.2rem; }
+    header a {
+      color: #a0c4ff; text-decoration: none; font-size: 0.9rem;
+    }
+    header a:hover { text-decoration: underline; }
+
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+
+    /* ── Panneau de configuration ── */
+    .config-panel {
+      background: #fff; border-radius: 8px;
+      padding: 20px; margin-bottom: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.1);
+      display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;
+    }
+    .config-panel label { display: block; font-size: .85rem; margin-bottom: 4px; color: #555; }
+    .config-panel input[type="text"] {
+      padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px;
+      font-size: 1rem; width: 220px;
+    }
+    .config-panel select {
+      padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px;
+      font-size: 1rem; background: #fff;
+    }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      border: 2px dashed #a0c4ff; border-radius: 8px;
+      padding: 28px; text-align: center;
+      background: #f0f6ff; cursor: pointer; margin-bottom: 20px;
+      transition: background .2s;
+    }
+    .upload-zone:hover { background: #dceeff; }
+    .upload-zone p { color: #555; margin-bottom: 10px; }
+    #file-input { display: none; }
+    .btn {
+      padding: 9px 20px; border: none; border-radius: 6px;
+      font-size: .95rem; cursor: pointer; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary   { background: #1a73e8; color: #fff; }
+    .btn-success   { background: #27ae60; color: #fff; }
+    .btn-secondary { background: #888; color: #fff; }
+    .btn:disabled  { background: #bbb; cursor: default; }
+
+    /* ── Toolbar sélection ── */
+    .toolbar {
+      display: flex; gap: 10px; align-items: center;
+      margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .toolbar span { color: #555; font-size: .9rem; }
+
+    /* ── Grille d'images ── */
+    #image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .img-card {
+      position: relative; border-radius: 8px; overflow: hidden;
+      border: 3px solid transparent; cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,.15);
+      transition: border-color .15s;
+      background: #ddd;
+    }
+    .img-card.selected { border-color: #1a73e8; }
+    .img-card img { width: 100%; height: 140px; object-fit: cover; display: block; }
+    .img-card .check {
+      position: absolute; top: 6px; right: 6px;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: #1a73e8; color: #fff;
+      display: none; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: bold;
+    }
+    .img-card.selected .check { display: flex; }
+    .img-card .fname {
+      font-size: .72rem; color: #555;
+      padding: 4px 6px; background: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ── Barre de progression ── */
+    #progress-section { margin-top: 24px; display: none; }
+    #progress-section h3 { margin-bottom: 8px; font-size: 1rem; }
+    .progress-bar-wrap {
+      background: #e0e0e0; border-radius: 6px; height: 18px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; background: #27ae60;
+      width: 0%; transition: width .4s; border-radius: 6px;
+    }
+    #progress-label { margin-top: 6px; font-size: .85rem; color: #555; }
+    #metrics-box {
+      margin-top: 14px; background: #fff; border-radius: 8px;
+      padding: 14px; display: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,.1);
+    }
+    #metrics-box h4 { margin-bottom: 8px; }
+    #metrics-box table { border-collapse: collapse; width: 100%; }
+    #metrics-box td { padding: 5px 10px; border-bottom: 1px solid #eee; }
+    #metrics-box td:first-child { color: #555; font-size: .88rem; }
+    #metrics-box td:last-child { font-weight: bold; }
+
+    .status-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 12px;
+      font-size: .8rem; font-weight: bold;
+    }
+    .status-idle    { background: #eee; color: #888; }
+    .status-running { background: #fff3cd; color: #856404; }
+    .status-done    { background: #d4edda; color: #155724; }
+    .status-error   { background: #f8d7da; color: #721c24; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🔍 YOLO — Entraînement</h1>
+  <a href="/predict-page">→ Aller à la Prédiction</a>
+</header>
+
+<div class="container">
+
+  <!-- Config -->
+  <div class="config-panel">
+    <div>
+      <label for="class-name">Nom de la classe (objet à détecter)</label>
+      <input type="text" id="class-name" name="class_name" placeholder="ex : conteneur, casque…" />
+    </div>
+    <div>
+      <label for="train-mode">Mode d'entraînement</label>
+      <select id="train-mode">
+        <option value="raw">Images importées (annotation auto)</option>
+        <option value="dataset">Dataset annoté existant (data/)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="upload-zone">
+    <p>Glissez vos images ici, ou cliquez pour sélectionner</p>
+    <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">
+      Choisir des images
+    </button>
+    <input type="file" id="file-input" multiple accept="image/*" />
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="btn btn-secondary" onclick="selectAll()">Tout sélectionner</button>
+    <button class="btn btn-secondary" onclick="deselectAll()">Tout désélectionner</button>
+    <span id="selection-count">0 image(s) sélectionnée(s)</span>
+    <button class="btn btn-success" id="train-btn" onclick="launchTraining()" disabled>
+      ▶ Lancer l'entraînement
+    </button>
+  </div>
+
+  <!-- Grille -->
+  <div id="image-grid"></div>
+
+  <!-- Progression -->
+  <div id="progress-section">
+    <h3>Entraînement <span id="status-badge" class="status-badge status-idle">idle</span></h3>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progress-bar"></div>
+    </div>
+    <p id="progress-label">En attente…</p>
+    <div id="metrics-box">
+      <h4>Métriques finales</h4>
+      <table id="metrics-table"></table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const grid = document.getElementById('image-grid');
+  const trainBtn = document.getElementById('train-btn');
+  const countLabel = document.getElementById('selection-count');
+  let uploadedFiles = [];
+  let selected = new Set();
+  let pollInterval = null;
+
+  // ── Upload ──────────────────────────────────────────────────────────────────
+
+  document.getElementById('file-input').addEventListener('change', async (e) => {
+    const files = e.target.files;
+    if (!files.length) return;
+
+    const fd = new FormData();
+    for (const f of files) fd.append('files', f);
+
+    const resp = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await resp.json();
+    uploadedFiles = uploadedFiles.concat(data.files);
+    renderGrid(data.files);
+  });
+
+  // Drag & drop
+  const zone = document.getElementById('upload-zone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.background = '#dceeff'; });
+  zone.addEventListener('dragleave', () => { zone.style.background = ''; });
+  zone.addEventListener('drop', async e => {
+    e.preventDefault(); zone.style.background = '';
+    const files = e.dataTransfer.files;
+    if (!files.length) return;
+    const fd = new FormData();
+    for (const f of files) fd.append('files', f);
+    const resp = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await resp.json();
+    uploadedFiles = uploadedFiles.concat(data.files);
+    renderGrid(data.files);
+  });
+
+  // ── Grille ──────────────────────────────────────────────────────────────────
+
+  function renderGrid(filenames) {
+    filenames.forEach(name => {
+      const card = document.createElement('div');
+      card.className = 'img-card';
+      card.dataset.name = name;
+      card.innerHTML = `
+        <div class="check">✓</div>
+        <img src="/uploads/${name}" alt="${name}" />
+        <div class="fname">${name}</div>
+      `;
+      card.addEventListener('click', () => toggleSelect(card, name));
+      grid.appendChild(card);
+    });
+    updateUI();
+  }
+
+  function toggleSelect(card, name) {
+    if (selected.has(name)) {
+      selected.delete(name);
+      card.classList.remove('selected');
+    } else {
+      selected.add(name);
+      card.classList.add('selected');
+    }
+    updateUI();
+  }
+
+  function selectAll() {
+    document.querySelectorAll('.img-card').forEach(c => {
+      c.classList.add('selected');
+      selected.add(c.dataset.name);
+    });
+    updateUI();
+  }
+
+  function deselectAll() {
+    document.querySelectorAll('.img-card').forEach(c => {
+      c.classList.remove('selected');
+    });
+    selected.clear();
+    updateUI();
+  }
+
+  function updateUI() {
+    countLabel.textContent = `${selected.size} image(s) sélectionnée(s)`;
+    trainBtn.disabled = selected.size === 0;
+  }
+
+  // ── Entraînement ────────────────────────────────────────────────────────────
+
+  async function launchTraining() {
+    const className = document.getElementById('class-name').value.trim() || 'objet';
+    const mode = document.getElementById('train-mode').value;
+
+    trainBtn.disabled = true;
+    document.getElementById('progress-section').style.display = 'block';
+    document.getElementById('metrics-box').style.display = 'none';
+    setStatus('running');
+
+    await fetch('/train', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ class_name: className, selected: [...selected], mode }),
+    });
+
+    // Polling toutes les 3s
+    pollInterval = setInterval(pollStatus, 3000);
+  }
+
+  async function pollStatus() {
+    const resp = await fetch('/train/status');
+    const data = await resp.json();
+
+    setStatus(data.status);
+
+    if (data.status === 'done') {
+      clearInterval(pollInterval);
+      showMetrics(data.metrics);
+      trainBtn.disabled = false;
+      document.getElementById('progress-label').textContent = 'Entraînement terminé ✓';
+      document.getElementById('progress-bar').style.width = '100%';
+    } else if (data.status === 'error') {
+      clearInterval(pollInterval);
+      document.getElementById('progress-label').textContent = 'Erreur : ' + (data.error || 'inconnue');
+      trainBtn.disabled = false;
+    } else if (data.status === 'running') {
+      document.getElementById('progress-label').textContent = 'Entraînement en cours…';
+      // Animation indéterminée
+      const bar = document.getElementById('progress-bar');
+      bar.style.width = bar.style.width === '60%' ? '75%' : '60%';
+    }
+  }
+
+  function setStatus(status) {
+    const badge = document.getElementById('status-badge');
+    badge.textContent = status;
+    badge.className = 'status-badge status-' + status;
+  }
+
+  function showMetrics(metrics) {
+    const box = document.getElementById('metrics-box');
+    const table = document.getElementById('metrics-table');
+    box.style.display = 'block';
+    const rows = [
+      ['mAP50', (metrics.mAP50 * 100).toFixed(1) + ' %'],
+      ['Précision', (metrics.precision * 100).toFixed(1) + ' %'],
+      ['Rappel', (metrics.recall * 100).toFixed(1) + ' %'],
+    ];
+    table.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  }
+
+  // ── Chargement initial de la galerie ────────────────────────────────────────
+  (async () => {
+    const resp = await fetch('/gallery');
+    const data = await resp.json();
+    if (data.images.length) renderGrid(data.images);
+  })();
+</script>
+
+</body>
+</html>

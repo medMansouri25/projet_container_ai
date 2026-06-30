@@ -1,14 +1,31 @@
-# Environnement Python
+﻿# Environnement Python
 .venv/
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
 
-# Modèles YOLO (trop lourds pour git)
+# Modèles YOLO (trop lourds) — sauf le best.pt entraîné sur conteneurs
 *.pt
 *.onnx
 *.engine
+!Application/ml/runs/baseline/train/weights/best.pt
+
+# Dataset images (5000+ images — trop lourd pour git)
+Application/data/train/
+Application/data/valid/
+Application/data/test/
+
+# Batch previews YOLO (grandes, pas utiles)
+Application/ml/runs/baseline/train/*.jpg
+Application/ml/runs/evaluate/eval/*.jpg
+
+# Sorties TestYolo
+TestYolo/runs/
+
+# Logs
+*.log
+logs/
 
 # Fichiers temporaires
 _tmp_crop.png
@@ -25,10 +42,6 @@ test_app.py
 docs/
 CONTEXT.md
 ReformulationBesoins.md
-
-# Sorties entraînement YOLO
-TestYolo/runs/
-runs/
 
 # Cache YOLO (recréé automatiquement)
 *.cache

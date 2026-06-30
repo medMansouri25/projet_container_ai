@@ -1,0 +1,7 @@
+{
+  "model_path": "D:\\ProjetMarsa\\Application\\ml\\runs\\baseline\\train\\best.pt",
+  "mAP50": 0.995,
+  "mAP50_95": 0.9949999999999999,
+  "precision": 0.9997601926595864,
+  "recall": 1.0
+}

@@ -1,0 +1,6 @@
+train: D:/ProjetMarsa/Application/data/train/images
+val: D:/ProjetMarsa/Application/data/valid/images
+test: D:/ProjetMarsa/Application/data/test/images
+
+nc: 1
+names: ['conteneur']
