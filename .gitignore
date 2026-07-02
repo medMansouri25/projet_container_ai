@@ -5,11 +5,12 @@ __pycache__/
 *.pyo
 .pytest_cache/
 
-# Modèles YOLO (trop lourds) — sauf le best.pt entraîné sur conteneurs
+# Modèles YOLO (trop lourds) — sauf les best.pt entraînés (baseline + versions)
 *.pt
 *.onnx
 *.engine
 !Application/ml/runs/baseline/train/weights/best.pt
+!Application/models/best_*.pt
 
 # Dataset images (5000+ images — trop lourd pour git)
 # On garde classes.json, manifest.json et data.yaml (petits fichiers de config)
