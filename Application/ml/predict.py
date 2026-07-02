@@ -1,27 +1,27 @@
 """
-predict.py — Prédiction sur nouvelles images avec le modèle final
------------------------------------------------------------------
-Charge best.pt (issu de train_final.py) et détecte les objets dans
-une ou plusieurs images. Sauvegarde les images annotées avec bounding
-boxes et libellés colorés.
+predict.py — Prédiction sur nouvelles images avec le dernier modèle
+---------------------------------------------------------------------
+Charge best_vN.pt (dernier par défaut, via models/metadata.json) et
+détecte les objets dans une ou plusieurs images. Sauvegarde les images
+annotées dans reports/predict/.
 
 Usage :
   python predict.py image.jpg
   python predict.py img1.jpg img2.jpg img3.jpg
-  python predict.py image.jpg --model runs/final/train/weights/best.pt
-
-Etape 8 — dernière étape du pipeline ML.
+  python predict.py image.jpg --version v1
+  python predict.py image.jpg --conf 0.5
 """
 
 import os
+import json
+import argparse
 import cv2
 import numpy as np
 
 from ultralytics import YOLO
 
-DEFAULT_MODEL = os.path.join(
-    os.path.dirname(__file__), "runs", "final", "train", "weights", "best.pt"
-)
+DEFAULT_MODELS_DIR  = os.path.join(os.path.dirname(__file__), "..", "models")
+DEFAULT_REPORTS_DIR = os.path.join(os.path.dirname(__file__), "..", "reports")
 
 COLORS = [
     (231, 76,  60),   # rouge
@@ -38,21 +38,49 @@ COLORS = [
 ]
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _load_json(path: str, default):
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    return default
+
+
+def _latest_version(models_dir: str) -> str | None:
+    metadata = _load_json(os.path.join(models_dir, "metadata.json"), {})
+    if not metadata:
+        return None
+    return sorted(metadata.keys())[-1]
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
 def predict(
     image_paths,
-    model_path: str = DEFAULT_MODEL,
+    models_dir: str = DEFAULT_MODELS_DIR,
+    reports_dir: str = DEFAULT_REPORTS_DIR,
+    version: str = None,
     conf: float = 0.25,
-    save_dir: str = None,
 ) -> list[dict]:
     """
-    Prédit les objets dans une ou plusieurs images.
-    Retourne [{image, detections:[{label,confidence,bbox}], output_path}].
+    Prédit les objets dans une ou plusieurs images avec le dernier modèle
+    (ou une version explicite). Sauvegarde les images annotées dans
+    reports/predict/. Retourne [{version, image, detections, output_path}].
     """
     if isinstance(image_paths, str):
         image_paths = [image_paths]
 
-    if save_dir is None:
-        save_dir = os.path.join(os.path.dirname(__file__), "runs", "predict")
+    if version is None:
+        version = _latest_version(models_dir)
+        if version is None:
+            raise ValueError("Aucun modèle trouvé dans models/. Lancez d'abord train.py.")
+
+    model_path = os.path.join(models_dir, f"best_{version}.pt")
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Modèle introuvable : {model_path}")
+
+    save_dir = os.path.join(reports_dir, "predict")
     os.makedirs(save_dir, exist_ok=True)
 
     model = YOLO(model_path)
@@ -75,6 +103,7 @@ def predict(
 
         output_path = _draw_and_save(img_path, detections, save_dir)
         all_results.append({
+            "version": version,
             "image": img_path,
             "detections": detections,
             "output_path": output_path,
@@ -83,7 +112,7 @@ def predict(
     return all_results
 
 
-def _draw_and_save(img_path: str, detections: list[dict], save_dir: str) -> str:
+def _draw_and_save(img_path: str, detections: list, save_dir: str) -> str:
     img = cv2.imread(img_path)
     if img is None:
         return None
@@ -109,29 +138,21 @@ def _draw_and_save(img_path: str, detections: list[dict], save_dir: str) -> str:
     return output_path
 
 
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
-    import sys
-    args = sys.argv[1:]
-    if not args:
-        print("Usage: python predict.py image1.jpg [image2.jpg ...]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Prediction YOLO")
+    parser.add_argument("images", nargs="+")
+    parser.add_argument("--models",  default=DEFAULT_MODELS_DIR)
+    parser.add_argument("--reports", default=DEFAULT_REPORTS_DIR)
+    parser.add_argument("--version", default=None)
+    parser.add_argument("--conf",    type=float, default=0.25)
+    args = parser.parse_args()
 
-    model_path = DEFAULT_MODEL
-    images = []
-    i = 0
-    while i < len(args):
-        if args[i] == "--model" and i + 1 < len(args):
-            model_path = args[i + 1]
-            i += 2
-        else:
-            images.append(args[i])
-            i += 1
-
-    print(f"Modele : {model_path}")
-    results = predict(images, model_path)
+    results = predict(args.images, args.models, args.reports, args.version, args.conf)
 
     for r in results:
-        print(f"\n[{r['image']}]")
+        print(f"\n[{r['image']}] (modele {r['version']})")
         if not r["detections"]:
             print("  Aucun objet detecte.")
         for det in r["detections"]:

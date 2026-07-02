@@ -12,13 +12,18 @@ __pycache__/
 !Application/ml/runs/baseline/train/weights/best.pt
 
 # Dataset images (5000+ images — trop lourd pour git)
-Application/data/train/
-Application/data/valid/
-Application/data/test/
+# On garde classes.json, manifest.json et data.yaml (petits fichiers de config)
+Application/dataset/raw/
+Application/dataset/versions/
+Application/dataset/current/
 
-# Batch previews YOLO (grandes, pas utiles)
-Application/ml/runs/baseline/train/*.jpg
-Application/ml/runs/evaluate/eval/*.jpg
+# Rapports : on garde les .md/.json, pas les images
+Application/reports/predict/
+Application/reports/**/*.jpg
+Application/reports/**/*.png
+
+# Anciens runs YOLO (le best.pt baseline déjà tracké reste tracké)
+Application/ml/runs/
 
 # Sorties TestYolo
 TestYolo/runs/
