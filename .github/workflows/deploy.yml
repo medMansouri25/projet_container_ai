@@ -41,8 +41,9 @@ jobs:
 
             # Redeploy Docker container
             docker pull mansourimed25/smartcontainer-ai:latest
-            docker stop smartcontainer || true
-            docker rm smartcontainer || true
+            docker rm -f smartcontainer || true
+            # docker rm est asynchrone : attendre la fin effective de la suppression
+            while docker inspect smartcontainer >/dev/null 2>&1; do sleep 1; done
             docker run -d \
               --name smartcontainer \
               --restart unless-stopped \
