@@ -1,5 +1,5 @@
 train: D:/ProjetMarsa/Application/dataset/current/train/images
 val: D:/ProjetMarsa/Application/dataset/current/valid/images
 test: D:/ProjetMarsa/Application/dataset/current/test/images
-nc: 1
-names: ['Conteneur']
+nc: 2
+names: ['Conteneur', 'Fruit']

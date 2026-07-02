@@ -299,7 +299,7 @@ if __name__ == "__main__":
 
     if args.cmd == "add-class":
         r = add_class(args.dataset, args.class_name)
-        print(f"Classe '{args.class_name}' → index {r['index']}")
+        print(f"Classe '{args.class_name}' -> index {r['index']}")
         print(f"Classes : {r['classes']}")
 
     elif args.cmd == "import":

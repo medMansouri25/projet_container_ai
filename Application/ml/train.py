@@ -75,6 +75,51 @@ def _read_classes(dataset_dir: str) -> list:
     return [classes[str(i)] for i in range(len(classes))]
 
 
+HYPERPARAM_KEYS = ["lr0", "lrf", "momentum", "weight_decay", "batch", "imgsz", "epochs", "optimizer"]
+
+
+def _read_hyperparams(save_dir: str) -> dict:
+    """Lit les hyperparamètres clés depuis args.yaml du run YOLO."""
+    args_path = os.path.join(save_dir, "args.yaml")
+    if not os.path.exists(args_path):
+        return {}
+    import yaml
+    with open(args_path, encoding="utf-8") as f:
+        args = yaml.safe_load(f) or {}
+    return {k: args[k] for k in HYPERPARAM_KEYS if k in args}
+
+
+def _write_run_report(out: dict, run_dir: str) -> str:
+    """Écrit reports/run_NNN/report.md : métriques en % + hyperparamètres."""
+    lines = [
+        f"# Rapport d'entrainement — {out['version']}",
+        "",
+        f"**Date** : {datetime.now().strftime('%Y-%m-%d %H:%M')}  ",
+        f"**Meilleur modele** : `{out['model_path']}`",
+        "",
+        "## Resultats",
+        "",
+        "| Metrique | Score |",
+        "|----------|-------|",
+        f"| mAP50 | {out['mAP50'] * 100:.2f} % |",
+        f"| mAP50-95 | {out['mAP50_95'] * 100:.2f} % |",
+        f"| Precision | {out['precision'] * 100:.2f} % |",
+        f"| Recall | {out['recall'] * 100:.2f} % |",
+        "",
+        "## Hyperparametres",
+        "",
+        "| Parametre | Valeur |",
+        "|-----------|--------|",
+    ]
+    for k, v in out.get("hyperparameters", {}).items():
+        lines.append(f"| {k} | {v} |")
+
+    report_path = os.path.join(run_dir, "report.md")
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return report_path
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def train(
@@ -82,12 +127,12 @@ def train(
     models_dir: str = DEFAULT_MODELS_DIR,
     reports_dir: str = DEFAULT_REPORTS_DIR,
     base_model: str = DEFAULT_BASE_MODEL,
-    epochs: int = 50,
+    epochs: int = 20,
     patience: int = 10,
     device: int = 0,
     tune: bool = False,
     tune_iterations: int = 30,
-    tune_epochs: int = 30,
+    tune_epochs: int = 13,
 ) -> dict:
     """
     Lance le fine-tuning YOLO11m de façon incrémentale.
@@ -126,11 +171,14 @@ def train(
         name="train",
         device=device,
         exist_ok=True,
-        workers=0,
+        workers=8,       # chargement des images en parallèle (le GPU n'attend plus)
+        cache=True,      # images en RAM après la 1re epoch (plus de lecture disque)
+        batch=-1,        # auto : utilise le max de VRAM disponible
+        cos_lr=True,     # learning rate cosinus : descente douce, meilleur final
     )
 
-    # Copie best.pt → models/best_vN.pt
-    best_src = os.path.join(results.save_dir, "best.pt")
+    # Copie best.pt → models/best_vN.pt (YOLO le sauvegarde dans weights/)
+    best_src = os.path.join(results.save_dir, "weights", "best.pt")
     best_dst = os.path.join(models_dir, f"best_{version}.pt")
     shutil.copy2(best_src, best_dst)
 
@@ -143,7 +191,10 @@ def train(
         "precision": metrics.get("metrics/precision(B)", 0.0),
         "recall":    metrics.get("metrics/recall(B)", 0.0),
         "run":       run_name,
+        "hyperparameters": _read_hyperparams(str(results.save_dir)),
     }
+
+    _write_run_report(out, run_dir)
 
     # Met à jour metadata.json
     metadata = _load_json(os.path.join(models_dir, "metadata.json"), {})
@@ -158,6 +209,7 @@ def train(
         "date":        datetime.now().strftime("%Y-%m-%d %H:%M"),
         "epochs":      epochs,
         "tuned":       tune,
+        "hyperparameters": out["hyperparameters"],
     }
     _save_json(os.path.join(models_dir, "metadata.json"), metadata)
 
@@ -172,12 +224,12 @@ if __name__ == "__main__":
     parser.add_argument("--models",   default=DEFAULT_MODELS_DIR)
     parser.add_argument("--reports",  default=DEFAULT_REPORTS_DIR)
     parser.add_argument("--base-model", default=DEFAULT_BASE_MODEL)
-    parser.add_argument("--epochs",   type=int, default=50)
+    parser.add_argument("--epochs",   type=int, default=20)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--device",   type=int, default=0)
     parser.add_argument("--tune",     action="store_true")
     parser.add_argument("--tune-iterations", type=int, default=30)
-    parser.add_argument("--tune-epochs",     type=int, default=30)
+    parser.add_argument("--tune-epochs",     type=int, default=13)
     args = parser.parse_args()
 
     print(f"Mode : {'optimisation (tune)' if args.tune else 'normal'}")
@@ -193,10 +245,17 @@ if __name__ == "__main__":
         tune_iterations=args.tune_iterations,
         tune_epochs=args.tune_epochs,
     )
-    print(f"\nVersion   : {r['version']}")
-    print(f"Modele    : {r['model_path']}")
-    print(f"mAP50     : {r['mAP50']:.4f}")
-    print(f"mAP50-95  : {r['mAP50_95']:.4f}")
-    print(f"Precision : {r['precision']:.4f}")
-    print(f"Recall    : {r['recall']:.4f}")
-    print(f"Rapport   : {r['run']}")
+    print(f"\n{'='*50}")
+    print(f"Version          : {r['version']}")
+    print(f"Meilleur modele  : {r['model_path']}")
+    print(f"{'='*50}")
+    print(f"mAP50     : {r['mAP50'] * 100:.2f} %")
+    print(f"mAP50-95  : {r['mAP50_95'] * 100:.2f} %")
+    print(f"Precision : {r['precision'] * 100:.2f} %")
+    print(f"Recall    : {r['recall'] * 100:.2f} %")
+    print(f"{'='*50}")
+    print("Hyperparametres :")
+    for k, v in r["hyperparameters"].items():
+        print(f"  {k:<14} : {v}")
+    print(f"{'='*50}")
+    print(f"Rapport   : {r['run']}/report.md")
