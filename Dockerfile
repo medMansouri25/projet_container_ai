@@ -12,9 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Code source
 COPY Application/backend/ ./Application/backend/
 COPY Application/ml/ ./Application/ml/
-COPY Application/data/data.yaml ./Application/data/data.yaml
+COPY Application/dataset/data.yaml ./Application/dataset/data.yaml
+COPY Application/models/metadata.json ./Application/models/metadata.json
 
-# Modèle entraîné
+# Modèle entraîné (baseline tracké dans git ; best_vN.pt sont hors git)
 COPY Application/ml/runs/baseline/train/weights/best.pt \
      ./Application/ml/runs/baseline/train/weights/best.pt
 
