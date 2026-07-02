@@ -155,7 +155,13 @@ if __name__ == "__main__":
         print(f"\n[{r['image']}] (modele {r['version']})")
         if not r["detections"]:
             print("  Aucun objet detecte.")
-        for det in r["detections"]:
-            print(f"  {det['label']:<15} conf={det['confidence']:.2f}  bbox={det['bbox']}")
+            print("  ==> RIEN DETECTE")
+        else:
+            for det in r["detections"]:
+                print(f"  {det['label']:<15} conf={det['confidence']:.2f}  bbox={det['bbox']}")
+            best = max(r["detections"], key=lambda d: d["confidence"])
+            n = len(r["detections"])
+            objets = f" ({n} objets detectes)" if n > 1 else ""
+            print(f"  ==> C'EST UN {best['label'].upper()} (confiance {best['confidence']:.0%}){objets}")
         if r["output_path"]:
             print(f"  -> Sauvegarde : {r['output_path']}")

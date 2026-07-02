@@ -59,3 +59,5 @@ ReformulationBesoins.md
 # OS
 Thumbs.db
 .DS_Store
+# Dossier runs/ par defaut d'ultralytics (artefacts YOLO a la racine)
+runs/

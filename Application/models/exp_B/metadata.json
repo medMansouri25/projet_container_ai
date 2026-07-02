@@ -1,0 +1,102 @@
+{
+  "v1": {
+    "model_path": "Application/models\\best_v1.pt",
+    "classes": [
+      "Conteneur",
+      "Fruit"
+    ],
+    "mAP50": 0.52347,
+    "mAP50_95": 0.37459,
+    "precision": 0.5838,
+    "recall": 0.53069,
+    "run": "run_001",
+    "date": "2026-07-02 15:05",
+    "epochs": 20,
+    "tuned": false,
+    "hyperparameters": {
+      "lr0": 0.01,
+      "lrf": 0.01,
+      "momentum": 0.937,
+      "weight_decay": 0.0005,
+      "batch": -1,
+      "imgsz": 640,
+      "epochs": 20,
+      "optimizer": "auto"
+    }
+  },
+  "v2": {
+    "model_path": "D:/ProjetMarsa/Application/models/exp_B\\best_v2.pt",
+    "classes": [
+      "Conteneur",
+      "Fruit"
+    ],
+    "mAP50": 0.7059581081637287,
+    "mAP50_95": 0.47444136725978286,
+    "precision": 0.710928732133009,
+    "recall": 0.6506798421011895,
+    "run": "run_001",
+    "date": "2026-07-02 20:50",
+    "epochs": 13,
+    "tuned": false,
+    "hyperparameters": {
+      "lr0": 0.01,
+      "lrf": 0.01,
+      "momentum": 0.937,
+      "weight_decay": 0.0005,
+      "batch": -1,
+      "imgsz": 640,
+      "epochs": 13,
+      "optimizer": "auto"
+    }
+  },
+  "v3": {
+    "model_path": "D:/ProjetMarsa/Application/models/exp_B\\best_v3.pt",
+    "classes": [
+      "Conteneur",
+      "Fruit"
+    ],
+    "mAP50": 0.7152873158972979,
+    "mAP50_95": 0.4896658249766352,
+    "precision": 0.7120994633023835,
+    "recall": 0.6882859464898475,
+    "run": "run_003",
+    "date": "2026-07-02 21:02",
+    "epochs": 13,
+    "tuned": false,
+    "hyperparameters": {
+      "lr0": 0.01,
+      "lrf": 0.01,
+      "momentum": 0.937,
+      "weight_decay": 0.0005,
+      "batch": -1,
+      "imgsz": 640,
+      "epochs": 13,
+      "optimizer": "auto"
+    }
+  },
+  "v4": {
+    "model_path": "D:/ProjetMarsa/Application/models/exp_B\\best_v4.pt",
+    "classes": [
+      "Conteneur",
+      "Fruit"
+    ],
+    "mAP50": 0.7495173089523504,
+    "mAP50_95": 0.5069955718033039,
+    "precision": 0.699963167030144,
+    "recall": 0.7302679785748234,
+    "run": "run_005",
+    "date": "2026-07-02 21:15",
+    "epochs": 13,
+    "tuned": false,
+    "hyperparameters": {
+      "lr0": 0.01,
+      "lrf": 0.01,
+      "momentum": 0.937,
+      "weight_decay": 0.0005,
+      "batch": -1,
+      "imgsz": 640,
+      "epochs": 13,
+      "optimizer": "auto"
+    }
+  }
+}

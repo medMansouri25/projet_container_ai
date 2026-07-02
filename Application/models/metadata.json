@@ -23,5 +23,27 @@
       "epochs": 20,
       "optimizer": "auto"
     }
+  },
+  "v2": {
+    "model_path": "Application/models/best_v2.pt",
+    "classes": [
+      "Conteneur",
+      "Fruit"
+    ],
+    "mAP50": 0.86658,
+    "mAP50_95": 0.66926,
+    "precision": 0.82869,
+    "recall": 0.82367,
+    "run": "run_001",
+    "date": "2026-07-02 20:12",
+    "epochs": 29,
+    "tuned": false,
+    "note": "v_A dataset complet v3 - arret epoch 31/40 (deadlock dataloader Windows), best epoch conserve",
+    "benchmark": {
+      "mAP50": 0.9075,
+      "mAP50_95": 0.716,
+      "recall_fruit": 0.8619,
+      "recall_conteneur": 0.8479
+    }
   }
 }

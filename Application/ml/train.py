@@ -171,7 +171,7 @@ def train(
         name="train",
         device=device,
         exist_ok=True,
-        workers=8,       # chargement des images en parallèle (le GPU n'attend plus)
+        workers=2,       # parallélisme réduit : workers=8 a produit un deadlock Windows (epoch 31/40)
         cache=True,      # images en RAM après la 1re epoch (plus de lecture disque)
         batch=-1,        # auto : utilise le max de VRAM disponible
         cos_lr=True,     # learning rate cosinus : descente douce, meilleur final

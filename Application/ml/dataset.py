@@ -144,10 +144,18 @@ def create_version(
     valid_ratio: float = 0.20,
     test_ratio: float = 0.10,
     seed: int = 42,
+    balance: str = None,
+    cap: int = 100,
+    min_images: int = 60,
 ) -> str:
     """
     Crée une nouvelle version du dataset depuis les images validées.
     Génère versions/vN/, met à jour current/ et data.yaml.
+    balance="oversample" : duplique les images des classes minoritaires
+    dans train/ jusqu'à parité d'instances (valid/test intacts).
+    balance="rotate" : plafonne train/ à `cap` images par classe, sélection
+    aléatoire renouvelée à chaque appel ; ValueError si une classe a moins
+    de `min_images` images en train.
     Retourne le nom de version ("v1", "v2"...).
     """
     manifest = _load_json(_manifest_path(dataset_dir), [])
@@ -161,15 +169,26 @@ def create_version(
     version_name = f"v{len(existing) + 1}"
     version_dir = os.path.join(versions_dir, version_name)
 
+    # Benchmark figé : les images déjà en test y restent pour toujours.
+    # Les anciennes train/valid se re-répartissent entre train et valid seulement.
+    # Les nouvelles (split=None) suivent les ratios ; leur part test rejoint le benchmark.
+    benchmark = [e for e in validated if e.get("split") == "test"]
+    old       = [e for e in validated if e.get("split") in ("train", "valid")]
+    new       = [e for e in validated if not e.get("split")]
+
     random.seed(seed)
-    random.shuffle(validated)
-    n_train = int(len(validated) * train_ratio)
-    n_valid = int(len(validated) * valid_ratio)
+    random.shuffle(old)
+    random.shuffle(new)
+
+    tv = train_ratio + valid_ratio
+    n_train_old = int(len(old) * (train_ratio / tv)) if old else 0
+    n_train_new = int(len(new) * train_ratio)
+    n_valid_new = int(len(new) * valid_ratio)
 
     splits = {
-        "train": validated[:n_train],
-        "valid": validated[n_train:n_train + n_valid],
-        "test":  validated[n_train + n_valid:],
+        "train": old[:n_train_old] + new[:n_train_new],
+        "valid": old[n_train_old:] + new[n_train_new:n_train_new + n_valid_new],
+        "test":  benchmark + new[n_train_new + n_valid_new:],
     }
 
     for split_name, entries in splits.items():
@@ -189,6 +208,15 @@ def create_version(
 
     _save_json(_manifest_path(dataset_dir), manifest)
 
+    if balance == "oversample":
+        _oversample_train(version_dir)
+    elif balance == "rotate":
+        try:
+            _rotate_train(version_dir, cap, min_images)
+        except ValueError:
+            shutil.rmtree(version_dir)  # version invalide : on ne la garde pas
+            raise
+
     current_dir = os.path.join(dataset_dir, "current")
     if os.path.exists(current_dir):
         shutil.rmtree(current_dir)
@@ -201,6 +229,97 @@ def create_version(
 
 
 # ── Helpers internes ──────────────────────────────────────────────────────────
+
+def _rotate_train(version_dir: str, cap: int, min_images: int) -> None:
+    """
+    Plafonne train/ à `cap` images par classe (classe dominante de l'image).
+    Sélection aléatoire NON seedée : renouvelée à chaque appel (rotation).
+    ValueError si une classe a moins de `min_images` images en train.
+    """
+    img_dir = os.path.join(version_dir, "train", "images")
+    lbl_dir = os.path.join(version_dir, "train", "labels")
+
+    # Classe dominante de chaque image de train
+    by_class = {}
+    for lbl in os.listdir(lbl_dir):
+        stem = os.path.splitext(lbl)[0]
+        counts = {}
+        with open(os.path.join(lbl_dir, lbl)) as f:
+            for line in f:
+                parts = line.split()
+                if parts:
+                    counts[parts[0]] = counts.get(parts[0], 0) + 1
+        if counts:
+            cid = max(counts, key=counts.get)
+            by_class.setdefault(cid, []).append(stem)
+
+    for cid, stems in by_class.items():
+        if len(stems) < min_images:
+            raise ValueError(
+                f"Classe {cid} : {len(stems)} images en train, minimum {min_images} requis."
+            )
+
+    images_by_stem = {os.path.splitext(f)[0]: f for f in os.listdir(img_dir)}
+    rng = random.Random()  # non seedé : rotation différente à chaque appel
+
+    for cid, stems in by_class.items():
+        if len(stems) <= cap:
+            continue
+        keep = set(rng.sample(stems, cap))
+        for stem in stems:
+            if stem in keep:
+                continue
+            os.remove(os.path.join(img_dir, images_by_stem[stem]))
+            os.remove(os.path.join(lbl_dir, stem + ".txt"))
+
+
+def _oversample_train(version_dir: str) -> None:
+    """
+    Duplique les images des classes minoritaires dans train/ jusqu'à parité
+    d'instances avec la classe majoritaire. Copies nommées <stem>_dupN.<ext>.
+    """
+    img_dir = os.path.join(version_dir, "train", "images")
+    lbl_dir = os.path.join(version_dir, "train", "labels")
+
+    # Compte les instances par classe + classe dominante de chaque image
+    class_counts = {}
+    image_class = {}   # stem -> classe dominante de l'image
+    for lbl in os.listdir(lbl_dir):
+        stem = os.path.splitext(lbl)[0]
+        counts = {}
+        with open(os.path.join(lbl_dir, lbl)) as f:
+            for line in f:
+                parts = line.split()
+                if parts:
+                    counts[parts[0]] = counts.get(parts[0], 0) + 1
+        for cid, n in counts.items():
+            class_counts[cid] = class_counts.get(cid, 0) + n
+        if counts:
+            image_class[stem] = max(counts, key=counts.get)
+
+    if len(class_counts) < 2:
+        return
+    max_count = max(class_counts.values())
+
+    images_by_stem = {
+        os.path.splitext(f)[0]: f for f in os.listdir(img_dir)
+    }
+
+    for cid, count in class_counts.items():
+        if count >= max_count:
+            continue
+        factor = max_count // count  # duplications entières (original inclus)
+        stems = [s for s, c in image_class.items() if c == cid]
+        for dup in range(1, factor):
+            for stem in stems:
+                img_name = images_by_stem.get(stem)
+                if not img_name:
+                    continue
+                base, ext = os.path.splitext(img_name)
+                shutil.copy2(os.path.join(img_dir, img_name),
+                             os.path.join(img_dir, f"{base}_dup{dup}{ext}"))
+                shutil.copy2(os.path.join(lbl_dir, stem + ".txt"),
+                             os.path.join(lbl_dir, f"{stem}_dup{dup}.txt"))
 
 def _unique_path(path: str) -> str:
     if not os.path.exists(path):
@@ -294,6 +413,12 @@ if __name__ == "__main__":
 
     p_ver = sub.add_parser("version")
     p_ver.add_argument("--dataset", default=os.path.join(os.path.dirname(__file__), "..", "dataset"))
+    p_ver.add_argument("--balance", choices=["oversample", "rotate"], default=None)
+    p_ver.add_argument("--cap", type=int, default=100)
+    p_ver.add_argument("--min", type=int, default=60, dest="min_images")
+    p_ver.add_argument("--train", type=float, default=0.70, dest="train_ratio")
+    p_ver.add_argument("--valid", type=float, default=0.20, dest="valid_ratio")
+    p_ver.add_argument("--test", type=float, default=0.10, dest="test_ratio")
 
     args = parser.parse_args()
 
@@ -311,7 +436,10 @@ if __name__ == "__main__":
         print(f"{r['validated']} images marquees comme validees")
 
     elif args.cmd == "version":
-        v = create_version(args.dataset)
+        v = create_version(
+            args.dataset, args.train_ratio, args.valid_ratio, args.test_ratio,
+            balance=args.balance, cap=args.cap, min_images=args.min_images,
+        )
         print(f"Version creee : {v}")
         print(f"Dataset : {os.path.join(args.dataset, 'versions', v)}")
 
