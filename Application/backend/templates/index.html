@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartContainer AI — Scanner BIC</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav>
+    <span class="brand">🚢 SmartContainer AI</span>
+    <a href="/">Scanner</a>
+    <a href="/history">Historique</a>
+  </nav>
+
+  <main>
+    <h1>Scanner un conteneur</h1>
+    <p class="subtitle">Détection du code BIC (ISO 6346) — importez une image ou utilisez la caméra.</p>
+
+    {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+    <form id="scan-form" action="/scan" method="post" enctype="multipart/form-data">
+      <div id="dropzone" class="dropzone">
+        <p>📷 Glissez une image ici<br>ou</p>
+        <label class="btn">Choisir un fichier
+          <input type="file" id="file-input" name="image" accept="image/*" hidden>
+        </label>
+        <button type="button" id="camera-btn" class="btn btn-secondary">Ouvrir la caméra</button>
+      </div>
+
+      <div id="camera-zone" class="camera-zone" hidden>
+        <video id="video" autoplay playsinline></video>
+        <div class="camera-actions">
+          <button type="button" id="capture-btn" class="btn">📸 Capturer</button>
+          <button type="button" id="close-camera-btn" class="btn btn-secondary">Fermer</button>
+        </div>
+        <canvas id="canvas" hidden></canvas>
+      </div>
+
+      <div id="preview-zone" class="preview-zone" hidden>
+        <img id="preview" alt="aperçu">
+        <div class="camera-actions">
+          <button type="submit" class="btn btn-primary">🔍 Analyser</button>
+          <button type="button" id="reset-btn" class="btn btn-secondary">Changer d'image</button>
+        </div>
+      </div>
+    </form>
+  </main>
+
+  <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+</body>
+</html>

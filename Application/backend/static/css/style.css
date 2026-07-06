@@ -1,0 +1,145 @@
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --bg: #f1f5f9;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --danger: #dc2626;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+nav {
+  background: var(--card);
+  padding: 0.9rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+nav .brand { font-weight: 700; font-size: 1.1rem; margin-right: auto; }
+nav a { color: var(--muted); text-decoration: none; font-weight: 500; }
+nav a:hover { color: var(--primary); }
+
+main { max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; }
+
+h1 { font-size: 1.6rem; margin-bottom: 0.4rem; }
+.subtitle { color: var(--muted); margin-bottom: 1.5rem; }
+
+.alert {
+  background: #fef2f2;
+  color: var(--danger);
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.dropzone {
+  background: var(--card);
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--muted);
+  transition: border-color 0.2s, background 0.2s;
+}
+.dropzone.dragover { border-color: var(--primary); background: #eff6ff; }
+.dropzone p { margin-bottom: 1rem; line-height: 1.7; }
+
+.btn {
+  display: inline-block;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.65rem 1.3rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  margin: 0.2rem;
+}
+.btn:hover { background: var(--primary-dark); }
+.btn-secondary { background: #e2e8f0; color: var(--text); }
+.btn-secondary:hover { background: #cbd5e1; }
+.btn-primary { font-size: 1.05rem; padding: 0.75rem 1.8rem; }
+
+.camera-zone, .preview-zone { text-align: center; margin-top: 1.2rem; }
+.camera-zone video, .preview-zone img {
+  max-width: 100%;
+  max-height: 420px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+.camera-actions { margin-top: 1rem; }
+
+.result-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 760px) { .result-grid { grid-template-columns: 1fr; } }
+
+.result-image img { width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+
+.result-panel {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.badges { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.badge {
+  background: #e0e7ff;
+  color: var(--primary-dark);
+  border-radius: 999px;
+  padding: 0.25rem 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.badge-ok { background: #dcfce7; color: var(--ok); }
+.badge-warn { background: #fef3c7; color: var(--warn); }
+.badge-info { background: #f1f5f9; color: var(--muted); }
+
+.raw { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.2rem; word-break: break-all; }
+
+.confirm-form label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
+.confirm-form input[type="text"] {
+  width: 100%;
+  font-size: 1.4rem;
+  font-family: 'Consolas', monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 0.6rem 0.9rem;
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+.confirm-form input[type="text"]:focus { border-color: var(--primary); outline: none; }
+
+.history-table {
+  width: 100%;
+  background: var(--card);
+  border-radius: 12px;
+  border-collapse: collapse;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.history-table th, .history-table td { padding: 0.75rem 1rem; text-align: left; }
+.history-table thead { background: #f8fafc; color: var(--muted); font-size: 0.85rem; }
+.history-table tbody tr { border-top: 1px solid #f1f5f9; }
+.history-table .bic { font-family: 'Consolas', monospace; font-weight: 700; }
+.thumb { width: 72px; height: 48px; object-fit: cover; border-radius: 6px; }

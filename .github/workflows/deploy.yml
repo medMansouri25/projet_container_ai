@@ -48,5 +48,6 @@ jobs:
               --name smartcontainer \
               --restart unless-stopped \
               -p 5001:5000 \
+              -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
               mansourimed25/smartcontainer-ai:latest
           "

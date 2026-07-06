@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Résultat — SmartContainer AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav>
+    <span class="brand">🚢 SmartContainer AI</span>
+    <a href="/">Scanner</a>
+    <a href="/history">Historique</a>
+  </nav>
+
+  <main>
+    <h1>Résultat de l'analyse</h1>
+
+    <div class="result-grid">
+      <div class="result-image">
+        <img src="{{ image_url }}" alt="image analysée">
+      </div>
+
+      <div class="result-panel">
+        {% if found %}
+          <div class="badges">
+            <span class="badge">Conteneur {{ '%.0f' % (yolo_confidence * 100) }}%</span>
+            {% if vertical %}<span class="badge badge-info">Texte vertical (ROI pivotée)</span>{% endif %}
+            {% if bic and valid %}
+              <span class="badge badge-ok">BIC valide (ISO 6346)</span>
+            {% elif bic %}
+              <span class="badge badge-warn">Chiffre de contrôle incorrect</span>
+            {% else %}
+              <span class="badge badge-warn">Aucun BIC lu par l'OCR</span>
+            {% endif %}
+          </div>
+
+          {% if raw_text %}<p class="raw">Texte OCR brut : {{ raw_text }}</p>{% endif %}
+
+          <form action="/confirm" method="post" class="confirm-form">
+            <label for="bic">Code BIC (corrigez si nécessaire)</label>
+            <input type="text" id="bic" name="bic" value="{{ bic }}"
+                   maxlength="11" pattern="[A-Za-z]{4}[0-9]{7}"
+                   placeholder="ABCD1234567" required>
+            <input type="hidden" name="ocr_confidence" value="{{ ocr_confidence }}">
+            <input type="hidden" name="image_name" value="{{ image_name }}">
+            <div class="camera-actions">
+              <button type="submit" class="btn btn-primary">✔ Confirmer</button>
+              <a href="/" class="btn btn-secondary">✖ Rejeter</a>
+            </div>
+          </form>
+        {% else %}
+          <div class="alert">Aucun conteneur détecté dans cette image.</div>
+          <a href="/" class="btn">← Réessayer</a>
+        {% endif %}
+      </div>
+    </div>
+  </main>
+</body>
+</html>

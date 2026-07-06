@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Historique — SmartContainer AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav>
+    <span class="brand">🚢 SmartContainer AI</span>
+    <a href="/">Scanner</a>
+    <a href="/history">Historique</a>
+  </nav>
+
+  <main>
+    <h1>Historique des scans</h1>
+
+    {% if scans %}
+      <table class="history-table">
+        <thead>
+          <tr><th>Image</th><th>Code BIC</th><th>ISO 6346</th><th>Confiance OCR</th><th>Date</th></tr>
+        </thead>
+        <tbody>
+          {% for s in scans %}
+          <tr>
+            <td>
+              {% if s.image_url %}<img class="thumb" src="{{ s.image_url }}" alt="scan">{% else %}—{% endif %}
+            </td>
+            <td class="bic">{{ s.bic[:4] }} {{ s.bic[4:10] }} {{ s.bic[10:] }}</td>
+            <td>{% if s.valid %}<span class="badge badge-ok">valide</span>{% else %}<span class="badge badge-warn">à vérifier</span>{% endif %}</td>
+            <td>{% if s.ocr_confidence %}{{ '%.0f' % (s.ocr_confidence * 100) }}%{% else %}—{% endif %}</td>
+            <td>{{ s.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="subtitle">Aucun scan confirmé pour le moment. <a href="/">Scanner un conteneur →</a></p>
+    {% endif %}
+  </main>
+</body>
+</html>

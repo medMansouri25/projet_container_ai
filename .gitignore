@@ -61,3 +61,9 @@ Thumbs.db
 .DS_Store
 # Dossier runs/ par defaut d'ultralytics (artefacts YOLO a la racine)
 runs/
+
+# Secrets locaux (DATABASE_URL...)
+.env
+
+# Uploads runtime de l'app web
+Application/backend/uploads/

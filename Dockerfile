@@ -13,11 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY Application/backend/ ./Application/backend/
 COPY Application/ml/ ./Application/ml/
 COPY Application/dataset/data.yaml ./Application/dataset/data.yaml
-COPY Application/models/metadata.json ./Application/models/metadata.json
 
-# Modèle entraîné (baseline tracké dans git ; best_vN.pt sont hors git)
-COPY Application/ml/runs/baseline/train/weights/best.pt \
-     ./Application/ml/runs/baseline/train/weights/best.pt
+# Modèles versionnés (metadata.json + best_vN.pt trackés dans git)
+COPY Application/models/ ./Application/models/
 
 EXPOSE 5000
 

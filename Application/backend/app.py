@@ -1,177 +1,116 @@
 """
-app.py — Serveur Flask (point d'entrée de l'API web)
------------------------------------------------------
-Expose les routes HTTP du pipeline YOLO via une interface web :
+app.py — SmartContainer_AI : scanner de code BIC (ISO 6346)
+------------------------------------------------------------
+Routes :
+  GET  /                  page scanner (upload drag & drop + caméra)
+  POST /scan              image → YOLO (Conteneur) → crop → EasyOCR → result.html
+  POST /confirm           enregistre le BIC (corrigé ou non) dans Neon → /history
+  GET  /history           liste des scans confirmés
+  GET  /uploads/<name>    sert les images uploadées/annotées
 
-  GET  /                  → page galerie (sélection images + lancement entraînement)
-  GET  /predict-page      → page prédiction (upload image + affichage bbox)
-  POST /upload            → upload d'images dans uploads/
-  GET  /gallery           → liste des images uploadées
-  GET  /uploads/<name>    → servir une image uploadée
-  POST /train             → lancer le fine-tuning YOLO en thread daemon
-  GET  /train/status      → état de l'entraînement (polling JSON)
-  POST /predict           → inférence sur une image avec le modèle entraîné
-
-Dépendances internes :
-  - backend/trainer.py   : logique d'entraînement
-  - backend/predictor.py : logique d'inférence
+Pipeline : backend/pipeline/detector.py (YOLO best_vN) + pipeline/ocr.py (EasyOCR).
+Persistance : backend/db.py (PostgreSQL Neon via DATABASE_URL).
 
 Lancement : python app.py  →  http://localhost:5000
 """
 
 import os
-import threading
-import tempfile
+import sys
+import uuid
 
-from flask import Flask, request, jsonify, send_from_directory, render_template
+from flask import Flask, request, render_template, redirect, url_for, send_from_directory
 
-import predictor
-import trainer
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pipeline"))
+
+import db
+import detector
+import ocr
 
 app = Flask(__name__)
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
-MODELS_FOLDER = os.path.join(os.path.dirname(__file__), "..", "models")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(MODELS_FOLDER, exist_ok=True)
 
-app.config.setdefault("UPLOAD_FOLDER", UPLOAD_FOLDER)
-app.config.setdefault("MODELS_FOLDER", MODELS_FOLDER)
+ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
-train_state = {
-    "status": "idle",   # idle | running | done | error
-    "metrics": {},
-    "model_path": None,
-    "error": None,
-}
-
-
-# ── Pages ─────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
-    return render_template("gallery.html")
+    return render_template("index.html")
 
 
-@app.route("/predict-page")
-def predict_page():
-    return render_template("predict.html")
+@app.route("/scan", methods=["POST"])
+def scan():
+    file = request.files.get("image")
+    if not file or not file.filename:
+        return render_template("index.html", error="Aucune image recue."), 400
 
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTS:
+        return render_template("index.html", error=f"Format non supporte : {ext}"), 400
 
-# ── Upload ────────────────────────────────────────────────────────────────────
+    name = f"{uuid.uuid4().hex[:12]}{ext}"
+    image_path = os.path.join(UPLOAD_FOLDER, name)
+    file.save(image_path)
 
-@app.route("/upload", methods=["POST"])
-def upload():
-    files = request.files.getlist("files")
-    saved = []
-    upload_dir = app.config["UPLOAD_FOLDER"]
-    os.makedirs(upload_dir, exist_ok=True)
-    for f in files:
-        dest = os.path.join(upload_dir, f.filename)
-        f.save(dest)
-        saved.append(f.filename)
-    return jsonify({"files": saved})
+    det = detector.detect_container(image_path, annotated_dir=UPLOAD_FOLDER)
 
-
-# ── Gallery ───────────────────────────────────────────────────────────────────
-
-@app.route("/gallery", methods=["GET"])
-def gallery():
-    upload_dir = app.config["UPLOAD_FOLDER"]
-    exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-    images = [
-        f for f in os.listdir(upload_dir)
-        if os.path.splitext(f)[1].lower() in exts
-    ] if os.path.isdir(upload_dir) else []
-    return jsonify({"images": images})
-
-
-@app.route("/uploads/<filename>")
-def serve_upload(filename):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
-
-
-# ── Train ─────────────────────────────────────────────────────────────────────
-
-def _run_training(class_name: str, selected: list[str], mode: str):
-    train_state["status"] = "running"
-    try:
-        upload_dir = app.config["UPLOAD_FOLDER"]
-        models_dir = app.config["MODELS_FOLDER"]
-        base_model = os.path.join(
-            os.path.dirname(__file__), "..", "..", "TestYolo", "yolo11m.pt"
+    if not det["found"]:
+        return render_template(
+            "result.html",
+            found=False,
+            image_url=url_for("uploads", name=name),
+            image_name=name,
         )
 
-        if mode == "dataset":
-            data_yaml = os.path.join(
-                os.path.dirname(__file__), "..", "data", "data.yaml"
-            )
-        else:
-            tmp_dir = tempfile.mkdtemp()
-            import shutil
-            for fname in selected:
-                src = os.path.join(upload_dir, fname)
-                if os.path.exists(src):
-                    shutil.copy2(src, os.path.join(tmp_dir, fname))
-            dataset_dir = os.path.join(models_dir, "dataset")
-            data_yaml = trainer.prepare_raw_dataset(tmp_dir, class_name, dataset_dir)
+    extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
 
-        result = trainer.train(
-            data_yaml=data_yaml,
-            base_model=base_model,
-            epochs=50,
-            project_dir=models_dir,
-        )
-        train_state["model_path"] = result["model_path"]
-        train_state["metrics"] = result
-        train_state["status"] = "done"
-    except Exception as e:
-        train_state["status"] = "error"
-        train_state["error"] = str(e)
-
-
-@app.route("/train", methods=["POST"])
-def train():
-    if train_state["status"] == "running":
-        return jsonify({"error": "Training already in progress"}), 409
-
-    body = request.get_json() or {}
-    class_name = body.get("class_name", "objet")
-    selected = body.get("selected", [])
-    mode = body.get("mode", "raw")
-
-    t = threading.Thread(
-        target=_run_training,
-        args=(class_name, selected, mode),
-        daemon=True,
+    annotated_name = os.path.basename(det["annotated_path"]) if det["annotated_path"] else name
+    return render_template(
+        "result.html",
+        found=True,
+        bic=extraction["bic"] or "",
+        valid=extraction["valid"],
+        ocr_confidence=extraction["confidence"],
+        yolo_confidence=det["confidence"],
+        vertical=det["vertical"],
+        raw_text=" | ".join(extraction["raw"]),
+        image_url=url_for("uploads", name=annotated_name),
+        image_name=name,
     )
-    t.start()
-    return jsonify({"status": "started"})
 
 
-@app.route("/train/status", methods=["GET"])
-def train_status():
-    return jsonify(train_state)
+@app.route("/confirm", methods=["POST"])
+def confirm():
+    bic = (request.form.get("bic") or "").replace(" ", "").upper()
+    if not bic:
+        return redirect(url_for("index"))
+    confidence = request.form.get("ocr_confidence", type=float)
+    image_name = request.form.get("image_name")
+    image_path = f"uploads/{image_name}" if image_name else None
+
+    db.init_db()
+    db.save_scan(bic, confidence, image_path)
+    return redirect(url_for("history"))
 
 
-# ── Predict ───────────────────────────────────────────────────────────────────
+@app.route("/history")
+def history():
+    db.init_db()
+    scans = db.list_scans(limit=100)
+    for s in scans:
+        s["valid"] = ocr.validate_check_digit(s["bic"])
+        s["image_url"] = (
+            url_for("uploads", name=os.path.basename(s["image_path"]))
+            if s.get("image_path") else None
+        )
+    return render_template("history.html", scans=scans)
 
-@app.route("/predict", methods=["POST"])
-def predict():
-    model_path = train_state.get("model_path")
-    if not model_path:
-        return jsonify({"error": "No trained model available"}), 400
 
-    f = request.files.get("file")
-    if not f:
-        return jsonify({"error": "No file provided"}), 400
-
-    tmp_path = os.path.join(tempfile.gettempdir(), f.filename)
-    f.save(tmp_path)
-    detections = predictor.predict(tmp_path, model_path)
-    os.remove(tmp_path)
-    return jsonify({"detections": detections})
+@app.route("/uploads/<path:name>")
+def uploads(name):
+    return send_from_directory(UPLOAD_FOLDER, name)
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=False)
