@@ -27,7 +27,24 @@ nav {
   gap: 1.5rem;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
-nav .brand { font-weight: 700; font-size: 1.1rem; margin-right: auto; }
+nav .brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--primary-dark);
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  vertical-align: -3px;
+  flex-shrink: 0;
+}
+.icon-brand { width: 24px; height: 24px; }
+.icon-large { width: 44px; height: 44px; color: #94a3b8; margin-bottom: 0.6rem; }
 nav a { color: var(--muted); text-decoration: none; font-weight: 500; }
 nav a:hover { color: var(--primary); }
 
@@ -58,7 +75,10 @@ h1 { font-size: 1.6rem; margin-bottom: 0.4rem; }
 .dropzone p { margin-bottom: 1rem; line-height: 1.7; }
 
 .btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   background: var(--primary);
   color: #fff;
   border: none;
@@ -69,6 +89,7 @@ h1 { font-size: 1.6rem; margin-bottom: 0.4rem; }
   cursor: pointer;
   text-decoration: none;
   margin: 0.2rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 .btn:hover { background: var(--primary-dark); }
 .btn-secondary { background: #e2e8f0; color: var(--text); }
