@@ -26,7 +26,9 @@
           <div class="badges">
             <span class="badge">Conteneur {{ '%.0f' % (yolo_confidence * 100) }}%</span>
             {% if vertical %}<span class="badge badge-info">Texte vertical (ROI pivotée)</span>{% endif %}
-            {% if bic and valid %}
+            {% if bic and valid and corrected %}
+              <span class="badge badge-warn">Chiffre de contrôle recalculé — vérifiez le code</span>
+            {% elif bic and valid %}
               <span class="badge badge-ok">BIC valide (ISO 6346)</span>
             {% elif bic %}
               <span class="badge badge-warn">Chiffre de contrôle incorrect</span>

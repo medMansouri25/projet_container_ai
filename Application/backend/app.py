@@ -71,6 +71,7 @@ def scan():
         found=True,
         bic=extraction["bic"] or "",
         valid=extraction["valid"],
+        corrected=extraction.get("corrected", False),
         ocr_confidence=extraction["confidence"],
         yolo_confidence=det["confidence"],
         vertical=det["vertical"],
