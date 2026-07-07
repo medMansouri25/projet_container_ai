@@ -64,12 +64,16 @@ def scan():
         )
 
     # OCR sur la zone NumeroBIC si le modele l'a trouvee (plus precis),
-    # sinon repli sur le crop du conteneur entier
+    # sinon repli sur le crop du conteneur entier.
+    # roi_vertical = orientation de la ROI reellement lue (pour le badge).
     zone = det.get("bic_zone")
+    roi_vertical = det["vertical"]
     if zone is not None:
         extraction = ocr.extract_bic(zone["crop"], vertical=zone["vertical"])
+        roi_vertical = zone["vertical"]
         if not extraction["bic"]:
             extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
+            roi_vertical = det["vertical"]
     else:
         extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
 
@@ -83,7 +87,7 @@ def scan():
         bic_zone_found=zone is not None,
         ocr_confidence=extraction["confidence"],
         yolo_confidence=det["confidence"],
-        vertical=det["vertical"],
+        vertical=roi_vertical,
         raw_text=" | ".join(extraction["raw"]),
         image_url=url_for("uploads", name=annotated_name),
         image_name=name,

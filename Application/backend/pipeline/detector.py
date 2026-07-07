@@ -76,8 +76,7 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
            "annotated_path": None}
 
     best_box = None
-    best_bic = None
-    best_bic_conf = 0.0
+    bic_candidates = []   # [(conf, bbox)] toutes sources confondues
     for result in model(image_path, conf=conf, verbose=False):
         for box in result.boxes:
             label = result.names[int(box.cls[0])]
@@ -87,21 +86,33 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
                     out["confidence"] = round(c, 4)
                     best_box = [int(v) for v in box.xyxy[0].tolist()]
             elif label == "NumeroBIC":
-                if c > best_bic_conf:
-                    best_bic_conf = c
-                    best_bic = [int(v) for v in box.xyxy[0].tolist()]
+                bic_candidates.append((c, [int(v) for v in box.xyxy[0].tolist()]))
 
     # Modele specialiste zone BIC (entraine uniquement sur datasetEnt).
     # Seuil bas : une seule classe tres precise, mieux vaut attraper la zone.
-    if best_bic is None:
-        bic_model = _get_bic_model(models_dir)
-        if bic_model is not None:
-            for result in bic_model(image_path, conf=0.15, verbose=False):
-                for box in result.boxes:
-                    c = float(box.conf[0])
-                    if c > best_bic_conf:
-                        best_bic_conf = c
-                        best_bic = [int(v) for v in box.xyxy[0].tolist()]
+    bic_model = _get_bic_model(models_dir)
+    if bic_model is not None:
+        for result in bic_model(image_path, conf=0.15, verbose=False):
+            for box in result.boxes:
+                c = float(box.conf[0])
+                bic_candidates.append((c, [int(v) for v in box.xyxy[0].tolist()]))
+
+    # La zone retenue doit etre DANS le conteneur detecte (sinon on lirait
+    # le marquage d'un conteneur voisin en arriere-plan)
+    def _center_inside(zone):
+        if best_box is None:
+            return True
+        cx = (zone[0] + zone[2]) / 2
+        cy = (zone[1] + zone[3]) / 2
+        return (best_box[0] <= cx <= best_box[2]
+                and best_box[1] <= cy <= best_box[3])
+
+    best_bic = None
+    best_bic_conf = 0.0
+    for c, bbox in bic_candidates:
+        if c > best_bic_conf and _center_inside(bbox):
+            best_bic_conf = c
+            best_bic = bbox
 
     if best_box:
         x1, y1, x2, y2 = best_box
