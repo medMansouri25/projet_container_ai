@@ -32,12 +32,19 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H 37.60.246.169 >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@37.60.246.169 "
+            set -e   # tout echec (pull disque plein, run...) fait echouer la CI
+
             # Sync code source dans stage-med/
             if [ -d /root/stage-med/.git ]; then
               cd /root/stage-med && git pull origin main
             else
               git clone https://github.com/medMansouri25/ProjetContainer_AI.git /root/stage-med
             fi
+
+            # Purger les anciennes images AVANT le pull (l'image fait ~5 Go,
+            # les versions accumulees saturent le disque -> pull silencieusement
+            # echoue et le conteneur repart sur l'ancienne image)
+            docker image prune -af
 
             # Redeploy Docker container
             docker pull mansourimed25/smartcontainer-ai:latest
@@ -50,4 +57,14 @@ jobs:
               -p 5001:5000 \
               -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
               mansourimed25/smartcontainer-ai:latest
+
+            # Verification : l'API doit repondre (echec CI sinon)
+            sleep 10
+            for i in \$(seq 1 12); do
+              if curl -sf http://localhost:5001/api/dashboard >/dev/null; then
+                echo 'API OK' && exit 0
+              fi
+              sleep 10
+            done
+            echo 'API ne repond pas apres deploiement' && exit 1
           "
