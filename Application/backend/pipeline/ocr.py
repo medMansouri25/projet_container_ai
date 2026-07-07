@@ -74,14 +74,46 @@ def _normalize(candidate: str) -> str | None:
     return letters + digits
 
 
+def _normalize_scored(candidate: str):
+    """Normalise un candidat 10-11 chars et compte les substitutions.
+    Retourne (normalisé, nb_substitutions) ou None si structure invalide."""
+    subs = 0
+    letters = ""
+    for c in candidate[:4]:
+        if c.isdigit():
+            c2 = _TO_LETTER.get(c)
+            if c2 is None:
+                return None
+            letters += c2
+            subs += 1
+        else:
+            letters += c
+    digits = ""
+    for c in candidate[4:]:
+        if c.isalpha():
+            c2 = _TO_DIGIT.get(c)
+            if c2 is None:
+                return None
+            digits += c2
+            subs += 1
+        else:
+            digits += c
+    return letters + digits, subs
+
+
 def resolve_bic(texts) -> dict:
     """
     Cherche, normalise et valide/répare un code BIC dans des fragments OCR.
+    Chaque candidat est **scoré** : substitutions de normalisation (×2),
+    4e lettre hors U/J/Z (+10, la catégorie ISO 6346 d'un conteneur est U),
+    chiffre de contrôle recalculé (+3). Le score le plus bas gagne — un
+    propriétaire propre réparé bat un faux code "plausible" sur-normalisé.
+    Les fragments sont assemblés en séquence ET en paires croisées (l'OCR
+    peut renvoyer les lignes dans le désordre).
     Retourne {"bic": str|None, "valid": bool, "corrected": bool}.
-    corrected=True quand le chiffre de contrôle a été recalculé (à faire
-    valider par l'utilisateur).
     """
-    cleaned = [re.sub(r"[^A-Z0-9]", "", t.upper()) for t in texts]
+    cleaned = [re.sub(r"[^A-Z0-9]", "", t.upper()) for t in texts if t]
+    cleaned = [c for c in cleaned if c]
 
     candidates = list(cleaned)
     for i in range(len(cleaned)):
@@ -90,9 +122,13 @@ def resolve_bic(texts) -> dict:
             joined += cleaned[j]
             if len(joined) >= 10:
                 candidates.append(joined)
+    # paires croisées dans les deux sens (fragments hors ordre de lecture)
+    for i, a in enumerate(cleaned):
+        for j, b in enumerate(cleaned):
+            if i != j and len(a) >= 4 and len(a + b) >= 10:
+                candidates.append(a + b)
 
-    exact = None          # BIC 11 chars valide tel quel / apres normalisation
-    repairable = None     # 10 premiers chars lus -> check digit recalcule
+    best = None   # (score, bic, corrected)
 
     for cand in candidates:
         for m in _LOOSE_RE.finditer(cand):
@@ -101,32 +137,43 @@ def resolve_bic(texts) -> dict:
                 if len(frag) < length:
                     continue
                 for start in range(0, len(frag) - length + 1):
-                    norm = _normalize(frag[start:start + length])
-                    if norm is None:
+                    scored = _normalize_scored(frag[start:start + length])
+                    if scored is None:
                         continue
+                    norm, subs = scored
+                    penalty = subs * 2 + (0 if norm[3] in "UJZ" else 10)
                     if length == 11 and validate_check_digit(norm):
-                        exact = norm
-                        break
-                    if repairable is None:
+                        entry = (penalty, norm, False)
+                    else:
                         repaired = norm[:10] + str(compute_check_digit(norm[:10]))
-                        repairable = repaired
-                if exact:
-                    break
-            if exact:
-                break
-        if exact:
-            break
+                        entry = (penalty + 3, repaired, True)
+                    if best is None or entry[0] < best[0]:
+                        best = entry
 
-    if exact:
-        return {"bic": exact, "valid": True, "corrected": False}
-    if repairable:
-        return {"bic": repairable, "valid": True, "corrected": True}
+    if best:
+        return {"bic": best[1], "valid": True, "corrected": best[2]}
     return {"bic": None, "valid": False, "corrected": False}
 
 
 def find_bic(texts) -> str | None:
     """Compat : retourne le BIC trouvé (corrigé ou non), sinon None."""
     return resolve_bic(texts)["bic"]
+
+
+def _sort_reading_order(results):
+    """Trie les détections EasyOCR en ordre de lecture (haut→bas, gauche→droite).
+    EasyOCR ne garantit pas l'ordre — indispensable pour assembler le BIC."""
+    def key(r):
+        try:
+            xs = [p[0] for p in r[0]]
+            ys = [p[1] for p in r[0]]
+            return (min(ys), min(xs))
+        except (TypeError, IndexError):
+            return (0, 0)
+    try:
+        return sorted(results, key=key)
+    except Exception:
+        return results
 
 
 _reader = None
@@ -208,6 +255,7 @@ def extract_bic(image, vertical: bool = False, reader=None) -> dict:
                     img = variant if s == 1 else cv2.resize(
                         variant, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
                     results = reader.readtext(img, allowlist=ALLOWLIST)
+                    results = _sort_reading_order(results)
                     texts = [r[1] for r in results]
                     confs = [float(r[2]) for r in results]
                     if not best["raw"]:
