@@ -10,7 +10,7 @@ function esc(s) {
 
 async function load() {
   try {
-    const r = await fetch(`${API_BASE}/api/history`);
+    const r = await fetch(`${await apiBase()}/api/history`);
     const data = await r.json();
     render(data.scans || []);
   } catch (err) {
@@ -71,7 +71,7 @@ function render(scans) {
     btn.addEventListener("click", async () => {
       const id = btn.id.replace("save-", "");
       const bic = document.getElementById(`bic-${id}`).value;
-      await fetch(`${API_BASE}/api/scans/${id}/update`, {
+      await fetch(`${await apiBase()}/api/scans/${id}/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bic }),
@@ -83,7 +83,7 @@ function render(scans) {
   tbody.querySelectorAll("[data-delete]").forEach(btn => {
     btn.addEventListener("click", async () => {
       if (!confirm(`Supprimer le scan ${btn.dataset.bic} ?`)) return;
-      await fetch(`${API_BASE}/api/scans/${btn.dataset.delete}/delete`, { method: "POST" });
+      await fetch(`${await apiBase()}/api/scans/${btn.dataset.delete}/delete`, { method: "POST" });
       window.location.reload();
     });
   });

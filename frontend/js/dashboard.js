@@ -8,7 +8,7 @@ function esc(s) {
 
 async function load() {
   try {
-    const r = await fetch(`${API_BASE}/api/dashboard`);
+    const r = await fetch(`${await apiBase()}/api/dashboard`);
     const s = await r.json();
     render(s);
   } catch (err) {

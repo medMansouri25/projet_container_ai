@@ -3,6 +3,12 @@ name: CI/CD SmartContainer_AI
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      # le front est heberge sur Vercel et api_base.txt est mis a jour
+      # automatiquement par le VPS : pas besoin de rebuild Docker
+      - 'frontend/**'
+      - 'api_base.txt'
+      - '**.md'
 
 jobs:
   build-and-deploy:

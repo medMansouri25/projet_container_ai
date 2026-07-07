@@ -20,10 +20,6 @@ let currentFile = null;
 let currentScan = null;
 let stream = null;
 
-if (API_BASE.startsWith("REMPLACE")) {
-  document.getElementById("config-alert").hidden = false;
-}
-
 function showError(msg) {
   errorAlert.textContent = msg;
   errorAlert.hidden = false;
@@ -99,7 +95,7 @@ analyzeBtn.addEventListener("click", async () => {
   try {
     const fd = new FormData();
     fd.append("image", currentFile);
-    const r = await fetch(`${API_BASE}/api/scan`, { method: "POST", body: fd });
+    const r = await fetch(`${await apiBase()}/api/scan`, { method: "POST", body: fd });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || "Erreur serveur");
     renderResult(data);
@@ -153,7 +149,7 @@ document.getElementById("confirm-btn").addEventListener("click", async () => {
   const bic = document.getElementById("bic").value.replace(/\s/g, "").toUpperCase();
   if (!bic) return;
   try {
-    const r = await fetch(`${API_BASE}/api/confirm`, {
+    const r = await fetch(`${await apiBase()}/api/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
