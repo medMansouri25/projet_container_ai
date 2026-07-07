@@ -121,6 +121,70 @@ def history():
     return render_template("history.html", scans=scans)
 
 
+@app.route("/scans/<int:scan_id>/delete", methods=["POST"])
+def delete_scan(scan_id):
+    db.delete_scan(scan_id)
+    return redirect(url_for("history"))
+
+
+@app.route("/scans/<int:scan_id>/update", methods=["POST"])
+def update_scan(scan_id):
+    bic = (request.form.get("bic") or "").replace(" ", "").upper()
+    if bic:
+        db.update_scan(scan_id, bic)
+    return redirect(url_for("history"))
+
+
+@app.route("/dashboard")
+def dashboard():
+    db.init_db()
+    scans = db.list_scans(limit=1000)
+    stats = _compute_stats(scans)
+    return render_template("dashboard.html", **stats)
+
+
+def _compute_stats(scans: list) -> dict:
+    """KPIs et séries pour le dashboard (calculés côté Python)."""
+    from datetime import date, timedelta
+    from collections import Counter
+
+    total = len(scans)
+    valid_count = sum(1 for s in scans if ocr.validate_check_digit(s["bic"]))
+    confs = [s["ocr_confidence"] for s in scans if s.get("ocr_confidence")]
+    avg_conf = sum(confs) / len(confs) if confs else 0.0
+    today = date.today()
+    today_count = sum(1 for s in scans if s["created_at"].date() == today)
+
+    # scans par jour (14 derniers jours)
+    days = [today - timedelta(days=i) for i in range(13, -1, -1)]
+    per_day_counts = Counter(s["created_at"].date() for s in scans)
+    max_day = max((per_day_counts.get(d, 0) for d in days), default=0) or 1
+    per_day = [{
+        "label": d.strftime("%d/%m"),
+        "count": per_day_counts.get(d, 0),
+        "pct": round(per_day_counts.get(d, 0) / max_day * 100),
+    } for d in days]
+
+    # top codes proprietaires (4 premieres lettres)
+    owners = Counter(s["bic"][:4] for s in scans if len(s["bic"]) >= 4)
+    top = owners.most_common(5)
+    max_owner = top[0][1] if top else 1
+    top_owners = [{"code": c, "count": n, "pct": round(n / max_owner * 100)}
+                  for c, n in top]
+
+    valid_pct = round(valid_count / total * 100) if total else 0
+    return {
+        "total": total,
+        "valid_count": valid_count,
+        "valid_pct": valid_pct,
+        "invalid_count": total - valid_count,
+        "avg_conf_pct": round(avg_conf * 100),
+        "today_count": today_count,
+        "per_day": per_day,
+        "top_owners": top_owners,
+    }
+
+
 @app.route("/uploads/<path:name>")
 def uploads(name):
     return send_from_directory(UPLOAD_FOLDER, name)

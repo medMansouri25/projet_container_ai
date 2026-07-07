@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — SmartContainer AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav>
+    <span class="brand">
+      <svg class="icon icon-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6.5"/><path d="M10 6v4"/><path d="M14 6v4"/><path d="M2 12.5h20l-1.5 6a2 2 0 0 1-2 1.5h-13a2 2 0 0 1-2-1.5z"/></svg>
+      SmartContainer AI
+    </span>
+    <a href="/">Scanner</a>
+    <a href="/history">Historique</a>
+    <a href="/dashboard">Dashboard</a>
+  </nav>
+
+  <main class="wide">
+    <h1>Dashboard</h1>
+    <p class="subtitle">Vue d'ensemble des scans de conteneurs</p>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <svg class="icon kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6.5"/><path d="M10 6v4"/><path d="M14 6v4"/><path d="M2 12.5h20l-1.5 6a2 2 0 0 1-2 1.5h-13a2 2 0 0 1-2-1.5z"/></svg>
+        <div class="kpi-value">{{ total }}</div>
+        <div class="kpi-label">Scans confirmés</div>
+      </div>
+      <div class="kpi-card">
+        <svg class="icon kpi-icon kpi-ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <div class="kpi-value">{{ valid_pct }}%</div>
+        <div class="kpi-label">Codes valides ISO 6346</div>
+      </div>
+      <div class="kpi-card">
+        <svg class="icon kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <div class="kpi-value">{{ avg_conf_pct }}%</div>
+        <div class="kpi-label">Confiance OCR moyenne</div>
+      </div>
+      <div class="kpi-card">
+        <svg class="icon kpi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <div class="kpi-value">{{ today_count }}</div>
+        <div class="kpi-label">Scans aujourd'hui</div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="dash-card">
+        <h2>Scans par jour <span class="dash-sub">(14 derniers jours)</span></h2>
+        <div class="bar-chart">
+          {% for d in per_day %}
+          <div class="bar-col" title="{{ d.label }} : {{ d.count }} scan(s)">
+            <span class="bar-count">{{ d.count if d.count else '' }}</span>
+            <div class="bar" style="height: {{ d.pct if d.count else 2 }}%"></div>
+            <span class="bar-label">{{ d.label }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="dash-card">
+        <h2>Validité des codes</h2>
+        <div class="donut-wrap">
+          <div class="donut" style="background: conic-gradient(var(--ok) 0 {{ valid_pct }}%, #fbbf24 {{ valid_pct }}% 100%);">
+            <div class="donut-hole">{{ valid_pct }}%</div>
+          </div>
+          <div class="legend">
+            <span><i class="dot dot-ok"></i> Valides ({{ valid_count }})</span>
+            <span><i class="dot dot-warn"></i> À vérifier ({{ invalid_count }})</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-card">
+        <h2>Top propriétaires <span class="dash-sub">(code BIC)</span></h2>
+        {% if top_owners %}
+          {% for o in top_owners %}
+          <div class="hbar-row">
+            <span class="hbar-code">{{ o.code }}</span>
+            <div class="hbar-track"><div class="hbar" style="width: {{ o.pct }}%"></div></div>
+            <span class="hbar-count">{{ o.count }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="subtitle">Pas encore de données.</p>
+        {% endif %}
+      </div>
+    </div>
+  </main>
+</body>
+</html>

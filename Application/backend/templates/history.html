@@ -14,26 +14,47 @@
     </span>
     <a href="/">Scanner</a>
     <a href="/history">Historique</a>
+    <a href="/dashboard">Dashboard</a>
   </nav>
 
-  <main>
+  <main class="wide">
     <h1>Historique des scans</h1>
 
     {% if scans %}
       <table class="history-table">
         <thead>
-          <tr><th>Image</th><th>Code BIC</th><th>ISO 6346</th><th>Confiance OCR</th><th>Date</th></tr>
+          <tr><th>Image</th><th>Code BIC</th><th>ISO 6346</th><th>Confiance OCR</th><th>Date</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {% for s in scans %}
-          <tr>
+          <tr id="row-{{ s.id }}">
             <td>
               {% if s.image_url %}<img class="thumb" src="{{ s.image_url }}" alt="scan">{% else %}—{% endif %}
             </td>
-            <td class="bic">{{ s.bic[:4] }} {{ s.bic[4:10] }} {{ s.bic[10:] }}</td>
+            <td>
+              <form class="edit-form" action="/scans/{{ s.id }}/update" method="post">
+                <input class="bic-input" name="bic" value="{{ s.bic }}" maxlength="11"
+                       pattern="[A-Za-z]{4}[0-9]{7}" readonly>
+                <button type="submit" class="btn btn-small btn-save" hidden>
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Enregistrer
+                </button>
+              </form>
+            </td>
             <td>{% if s.valid %}<span class="badge badge-ok">valide</span>{% else %}<span class="badge badge-warn">à vérifier</span>{% endif %}</td>
             <td>{% if s.ocr_confidence %}{{ '%.0f' % (s.ocr_confidence * 100) }}%{% else %}—{% endif %}</td>
             <td>{{ s.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td class="actions">
+              <button type="button" class="btn btn-small btn-secondary btn-edit" data-row="{{ s.id }}" title="Modifier le code">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+              </button>
+              <form action="/scans/{{ s.id }}/delete" method="post" class="inline-form"
+                    onsubmit="return confirm('Supprimer le scan {{ s.bic }} ?');">
+                <button type="submit" class="btn btn-small btn-danger" title="Supprimer">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </form>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -42,5 +63,19 @@
       <p class="subtitle">Aucun scan confirmé pour le moment. <a href="/">Scanner un conteneur →</a></p>
     {% endif %}
   </main>
+
+  <script>
+    document.querySelectorAll(".btn-edit").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const row = document.getElementById("row-" + btn.dataset.row);
+        const input = row.querySelector(".bic-input");
+        const save = row.querySelector(".btn-save");
+        input.readOnly = false;
+        input.classList.add("editing");
+        input.focus();
+        save.hidden = false;
+      });
+    });
+  </script>
 </body>
 </html>

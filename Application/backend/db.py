@@ -59,6 +59,18 @@ def save_scan(bic: str, ocr_confidence: float = None, image_path: str = None) ->
         return cur.fetchone()[0]
 
 
+def delete_scan(scan_id: int) -> None:
+    """Supprime un scan de l'historique."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("DELETE FROM scans WHERE id = %s", (scan_id,))
+
+
+def update_scan(scan_id: int, bic: str) -> None:
+    """Corrige le code BIC d'un scan existant."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("UPDATE scans SET bic = %s WHERE id = %s", (bic, scan_id))
+
+
 def list_scans(limit: int = 50) -> list:
     """Retourne les derniers scans confirmés (plus récents d'abord)."""
     with get_conn() as conn:
