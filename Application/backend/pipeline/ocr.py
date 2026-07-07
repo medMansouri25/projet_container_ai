@@ -24,7 +24,7 @@ import cv2
 import numpy as np
 
 BIC_RE = re.compile(r"[A-Z]{4}\d{7}")
-_LOOSE_RE = re.compile(r"[A-Z0-9]{10,11}")
+_LOOSE_RE = re.compile(r"[A-Z0-9?]{10,11}")
 
 ALLOWLIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
 
@@ -76,10 +76,21 @@ def _normalize(candidate: str) -> str | None:
 
 def _normalize_scored(candidate: str):
     """Normalise un candidat 10-11 chars et compte les substitutions.
+    '?' (caractère illisible) est conservé tel quel — il sera résolu par
+    l'équation du chiffre de contrôle. La position 3 (catégorie ISO,
+    presque toujours U) reçoit un prior : 0/O/Q/V/W → U.
     Retourne (normalisé, nb_substitutions) ou None si structure invalide."""
     subs = 0
     letters = ""
-    for c in candidate[:4]:
+    for i, c in enumerate(candidate[:4]):
+        if c == "?":
+            letters += c
+            continue
+        if i == 3 and c not in "UJZ":
+            if c in "0OQVW":
+                letters += "U"
+                subs += 1
+                continue
         if c.isdigit():
             c2 = _TO_LETTER.get(c)
             if c2 is None:
@@ -90,6 +101,9 @@ def _normalize_scored(candidate: str):
             letters += c
     digits = ""
     for c in candidate[4:]:
+        if c == "?":
+            digits += c
+            continue
         if c.isalpha():
             c2 = _TO_DIGIT.get(c)
             if c2 is None:
@@ -99,6 +113,31 @@ def _normalize_scored(candidate: str):
         else:
             digits += c
     return letters + digits, subs
+
+
+_LETTER_PREF = "SCLMTAEUHINORGPBDFKWVXYZJQ"  # frequence approx. des prefixes
+
+
+def _solve_unknown(norm: str):
+    """Résout l'unique caractère '?' d'un code 11 chars via le chiffre de
+    contrôle. Chiffres et position 3 : solution unique garantie. Lettres en
+    position 0-2 : les valeurs espacées de 11 (ex B/L/V) donnent le même
+    reste → jusqu'à 3 solutions, départagées par fréquence des lettres.
+    Retourne (code, unique) ou None."""
+    pos = norm.index("?")
+    if pos < 4:
+        charset = "UJZ" if pos == 3 else "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    else:
+        charset = "0123456789"
+    solutions = [norm[:pos] + ch + norm[pos + 1:] for ch in charset
+                 if validate_check_digit(norm[:pos] + ch + norm[pos + 1:])]
+    if not solutions:
+        return None
+    if len(solutions) == 1:
+        return solutions[0], True
+    solutions.sort(key=lambda s: _LETTER_PREF.index(s[pos])
+                   if s[pos] in _LETTER_PREF else 99)
+    return solutions[0], False
 
 
 def resolve_bic(texts) -> dict:
@@ -112,7 +151,7 @@ def resolve_bic(texts) -> dict:
     peut renvoyer les lignes dans le désordre).
     Retourne {"bic": str|None, "valid": bool, "corrected": bool}.
     """
-    cleaned = [re.sub(r"[^A-Z0-9]", "", t.upper()) for t in texts if t]
+    cleaned = [re.sub(r"[^A-Z0-9?]", "", t.upper()) for t in texts if t]
     cleaned = [c for c in cleaned if c]
 
     candidates = list(cleaned)
@@ -141,8 +180,23 @@ def resolve_bic(texts) -> dict:
                     if scored is None:
                         continue
                     norm, subs = scored
-                    penalty = subs * 2 + (0 if norm[3] in "UJZ" else 10)
-                    if length == 11 and validate_check_digit(norm):
+                    unknowns = norm.count("?")
+                    if unknowns > 1:
+                        continue
+                    c4pen = 0 if norm[3] in "UJZ?" else 10
+                    penalty = subs * 2 + c4pen
+                    if unknowns == 1:
+                        if length != 11:
+                            continue
+                        solved = _solve_unknown(norm)
+                        if solved is None:
+                            continue
+                        code, unique = solved
+                        # deduit par l'equation : sur si solution unique,
+                        # sinon choix heuristique -> badge verification
+                        entry = (penalty + (2 if unique else 4), code,
+                                 not unique)
+                    elif length == 11 and validate_check_digit(norm):
                         entry = (penalty, norm, False)
                     else:
                         repaired = norm[:10] + str(compute_check_digit(norm[:10]))
@@ -151,8 +205,9 @@ def resolve_bic(texts) -> dict:
                         best = entry
 
     if best:
-        return {"bic": best[1], "valid": True, "corrected": best[2]}
-    return {"bic": None, "valid": False, "corrected": False}
+        return {"bic": best[1], "valid": True, "corrected": best[2],
+                "score": best[0]}
+    return {"bic": None, "valid": False, "corrected": False, "score": 999}
 
 
 def find_bic(texts) -> str | None:
@@ -168,6 +223,26 @@ def _sort_reading_order(results):
             xs = [p[0] for p in r[0]]
             ys = [p[1] for p in r[0]]
             return (min(ys), min(xs))
+        except (TypeError, IndexError):
+            return (0, 0)
+    try:
+        return sorted(results, key=key)
+    except Exception:
+        return results
+
+
+def _sort_column_order(results, img_width):
+    """Trie en colonnes (gauche→droite) puis haut→bas dans chaque colonne.
+    Pour les marquages verticaux en caractères empilés : chaque caractère est
+    détecté séparément et doit être assemblé colonne par colonne, sinon les
+    colonnes voisines (ex : taille 22G1) s'intercalent par hauteur."""
+    bin_w = max(1, int(img_width * 0.25))
+
+    def key(r):
+        try:
+            xs = [p[0] for p in r[0]]
+            ys = [p[1] for p in r[0]]
+            return (min(xs) // bin_w, min(ys))
         except (TypeError, IndexError):
             return (0, 0)
     try:
@@ -196,14 +271,16 @@ def _regions(image):
     yield image[0:int(h * 0.35), 0:w], 2               # bande superieure
 
 
-_TARGET_H = 160  # hauteur minimale d'une zone avant OCR (petites zones YOLO)
+_TARGET_H = 160  # dimension minimale d'une zone avant OCR (petites zones YOLO)
 
 
 def _ensure_height(img):
-    """Agrandit les petits crops (zone BIC ~30px de haut) à une hauteur lisible."""
-    h = img.shape[0]
-    if 0 < h < _TARGET_H:
-        s = _TARGET_H / h
+    """Agrandit les petits crops à une taille lisible : la plus petite
+    dimension (hauteur pour un marquage horizontal, largeur pour un
+    marquage vertical empilé) est portée à _TARGET_H."""
+    small = min(img.shape[0], img.shape[1])
+    if 0 < small < _TARGET_H:
+        s = _TARGET_H / small
         img = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
     return img
 
@@ -222,6 +299,70 @@ def _variants(image):
     yield cv2.cvtColor(th, cv2.COLOR_GRAY2BGR)
 
 
+def _read_stacked_columns(image, reader) -> list:
+    """
+    Lecteur dédié aux marquages verticaux en caractères empilés (côtés de
+    conteneur) : EasyOCR ne sait pas les segmenter seul.
+    1. masque HSV de la peinture blanche (S faible, V fort)
+    2. projection verticale → colonnes de texte
+    3. projection horizontale par colonne → bande de chaque caractère
+    4. OCR caractère par caractère
+    Retourne une liste de chaînes (une par colonne, '?' si caractère illisible).
+    """
+    import numpy as np
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    bw = ((hsv[:, :, 1] < 70) & (hsv[:, :, 2] > 140)).astype("uint8") * 255
+    bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    H, W = bw.shape
+
+    colsum = bw.sum(axis=0) / 255
+    thr = max(2, 0.03 * H)
+    cols, start = [], None
+    for x in range(W):
+        if colsum[x] > thr and start is None:
+            start = x
+        elif colsum[x] <= thr and start is not None:
+            if x - start > 10:
+                cols.append((start, x))
+            start = None
+    if start is not None and W - start > 10:
+        cols.append((start, W))
+
+    fragments = []
+    for x1, x2 in cols[:4]:
+        band = bw[:, x1:x2]
+        rowsum = band.sum(axis=1) / 255
+        rthr = max(2, 0.08 * (x2 - x1))
+        chars, s = [], None
+        for y in range(H):
+            if rowsum[y] > rthr and s is None:
+                s = y
+            elif rowsum[y] <= rthr and s is not None:
+                if y - s > 10:
+                    chars.append((s, y))
+                s = None
+        if s is not None and H - s > 10:
+            chars.append((s, H))
+        if len(chars) < 4:      # colonne trop courte pour un code
+            continue
+        txt = ""
+        for y1, y2 in chars:
+            pad = 8
+            ch = image[max(0, y1 - pad):min(H, y2 + pad),
+                       max(0, x1 - pad):min(W, x2 + pad)]
+            if ch.size == 0:
+                txt += "?"
+                continue
+            s2 = max(1.0, 80.0 / ch.shape[0])
+            ch = cv2.resize(ch, None, fx=s2, fy=s2, interpolation=cv2.INTER_CUBIC)
+            r = reader.readtext(ch, allowlist=ALLOWLIST.strip())
+            best_frag = max(r, key=lambda t: t[2])[1].replace(" ", "") if r else "?"
+            txt += best_frag if best_frag else "?"
+        fragments.append(txt)
+    return fragments
+
+
 def extract_bic(image, vertical: bool = False, reader=None) -> dict:
     """
     Extrait le code BIC d'un crop (conteneur entier ou zone BIC localisée).
@@ -235,14 +376,33 @@ def extract_bic(image, vertical: bool = False, reader=None) -> dict:
     if reader is None:
         reader = _get_reader()
 
+    # Vertical : essayer d'abord SANS rotation (marquage en caractères
+    # empilés, chacun droit — le cas le plus courant sur les côtés),
+    # puis les deux rotations (texte réellement couché à 90°).
     orientations = [image]
     if vertical:
-        orientations = [cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
+        orientations = [image,
+                        cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
                         cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)]
 
     best = {"bic": None, "valid": False, "corrected": False,
             "confidence": 0.0, "raw": []}
-    repaired_votes = {}   # bic répa ré -> (occurrences, conf, raw)
+    repaired_votes = {}   # bic réparé -> (meilleur score, occurrences, conf, raw)
+
+    # Vertical : le lecteur de colonnes empilées d'abord (le cas standard
+    # des cotes de conteneur, que la detection EasyOCR classique rate)
+    if vertical:
+        fragments = _read_stacked_columns(image, reader)
+        if fragments:
+            res = resolve_bic(fragments)
+            if res["bic"] and res["score"] <= 4:
+                return {"bic": res["bic"], "valid": res["valid"],
+                        "corrected": res["corrected"], "confidence": 0.9,
+                        "raw": fragments}
+            if res["bic"]:
+                repaired_votes[res["bic"]] = (res["score"], 1, 0.5,
+                                              fragments, res["corrected"])
+            best["raw"] = fragments
 
     for oriented in orientations:
         for region, base_scale in _regions(oriented):
@@ -255,29 +415,46 @@ def extract_bic(image, vertical: bool = False, reader=None) -> dict:
                     img = variant if s == 1 else cv2.resize(
                         variant, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
                     results = reader.readtext(img, allowlist=ALLOWLIST)
-                    results = _sort_reading_order(results)
-                    texts = [r[1] for r in results]
-                    confs = [float(r[2]) for r in results]
-                    if not best["raw"]:
-                        best["raw"] = texts
 
-                    res = resolve_bic(texts)
-                    if res["bic"] is None:
-                        continue
+                    orderings = [_sort_reading_order(results)]
+                    if vertical:
+                        orderings.append(_sort_column_order(results, img.shape[1]))
 
-                    conf = round(sum(confs) / len(confs), 4) if confs else 0.0
-                    if not res["corrected"]:
-                        # BIC valide tel quel : reponse definitive
-                        best.update(res, confidence=conf, raw=texts)
-                        return best
-                    n, c, r = repaired_votes.get(res["bic"], (0, 0.0, texts))
-                    repaired_votes[res["bic"]] = (n + 1, max(c, conf), r)
+                    for ordered in orderings:
+                        texts = [r[1] for r in ordered]
+                        confs = [float(r[2]) for r in ordered]
+                        if not best["raw"]:
+                            best["raw"] = texts
+
+                        res = resolve_bic(texts)
+                        if res["bic"] is None:
+                            continue
+
+                        conf = round(sum(confs) / len(confs), 4) if confs else 0.0
+                        if not res["corrected"] and res["score"] <= 2:
+                            # BIC lu proprement (0-1 substitution, categorie
+                            # U/J/Z) et chiffre de controle OK : definitif.
+                            # Un candidat "valide" mais tres substitue peut
+                            # etre un faux positif (1 chance sur 10) -> vote.
+                            best.update(res, confidence=conf, raw=texts)
+                            best.pop("score", None)
+                            return best
+                        sc, n, c, r, corr = repaired_votes.get(
+                            res["bic"], (res["score"], 0, 0.0, texts,
+                                         res["corrected"]))
+                        repaired_votes[res["bic"]] = (
+                            min(sc, res["score"]), n + 1, max(c, conf), r,
+                            corr and res["corrected"])
 
     if repaired_votes:
-        # vote majoritaire parmi les codes repares (puis meilleure confiance)
-        bic, (n, conf, raw) = max(repaired_votes.items(),
-                                  key=lambda kv: (kv[1][0], kv[1][1]))
-        best.update({"bic": bic, "valid": True, "corrected": True,
+        # meilleur score d'abord (candidat le plus propre), puis occurrences
+        bic, (sc, n, conf, raw, corr) = min(
+            repaired_votes.items(),
+            key=lambda kv: (kv[1][0], -kv[1][1], -kv[1][2]))
+        # un candidat au score eleve reste douteux meme si le calcul passe :
+        # on force le badge "verifiez le code"
+        best.update({"bic": bic, "valid": True,
+                     "corrected": corr or sc > 2,
                      "confidence": conf, "raw": raw})
 
     return best
