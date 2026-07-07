@@ -1,12 +1,20 @@
 """
 app.py — SmartContainer_AI : scanner de code BIC (ISO 6346)
 ------------------------------------------------------------
-Routes :
+Routes HTML (app servie par le VPS) :
   GET  /                  page scanner (upload drag & drop + caméra)
   POST /scan              image → YOLO (Conteneur) → crop → EasyOCR → result.html
   POST /confirm           enregistre le BIC (corrigé ou non) dans Neon → /history
   GET  /history           liste des scans confirmés
+  GET  /dashboard         KPIs et graphiques
   GET  /uploads/<name>    sert les images uploadées/annotées
+
+API JSON (consommée par le front statique déployé sur Vercel) :
+  POST /api/scan          multipart image → résultat du pipeline en JSON
+  POST /api/confirm       {bic, ocr_confidence, image_name} → {id}
+  GET  /api/history       liste des scans en JSON
+  GET  /api/dashboard     statistiques en JSON
+  POST /api/scans/<id>/delete | /update
 
 Pipeline : backend/pipeline/detector.py (YOLO best_vN) + pipeline/ocr.py (EasyOCR).
 Persistance : backend/db.py (PostgreSQL Neon via DATABASE_URL).
@@ -18,7 +26,9 @@ import os
 import sys
 import uuid
 
-from flask import Flask, request, render_template, redirect, url_for, send_from_directory
+from flask import (Flask, request, render_template, redirect, url_for,
+                   send_from_directory, jsonify)
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pipeline"))
 
@@ -27,6 +37,19 @@ import detector
 import ocr
 
 app = Flask(__name__)
+# Derriere le tunnel Cloudflare : respecter Host / X-Forwarded-Proto pour
+# que les URLs absolues (_external=True) pointent vers le domaine public
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+
+@app.after_request
+def cors(response):
+    """CORS ouvert sur l'API : le front statique (Vercel) appelle ce backend."""
+    if request.path.startswith("/api/") or request.path.startswith("/uploads/"):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -39,15 +62,17 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/scan", methods=["POST"])
-def scan():
-    file = request.files.get("image")
+def _run_scan(file, external: bool = False):
+    """
+    Pipeline complet sur un fichier uploadé. Retourne (payload, erreur).
+    payload est un dict commun aux rendus HTML et JSON ;
+    external=True génère des URLs absolues (front hébergé ailleurs).
+    """
     if not file or not file.filename:
-        return render_template("index.html", error="Aucune image recue."), 400
-
+        return None, "Aucune image recue."
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTS:
-        return render_template("index.html", error=f"Format non supporte : {ext}"), 400
+        return None, f"Format non supporte : {ext}"
 
     name = f"{uuid.uuid4().hex[:12]}{ext}"
     image_path = os.path.join(UPLOAD_FOLDER, name)
@@ -56,15 +81,14 @@ def scan():
     det = detector.detect_container(image_path, annotated_dir=UPLOAD_FOLDER)
     zone = det.get("bic_zone")
 
+    def img_url(n):
+        return url_for("uploads", name=n, _external=external)
+
     # Abandon uniquement si NI conteneur NI zone BIC : un gros plan sur le
     # marquage (conteneur hors cadre) reste lisible via la zone seule.
     if not det["found"] and zone is None:
-        return render_template(
-            "result.html",
-            found=False,
-            image_url=url_for("uploads", name=name),
-            image_name=name,
-        )
+        return {"found": False, "image_url": img_url(name),
+                "image_name": name}, None
 
     # OCR sur la zone NumeroBIC si le modele l'a trouvee (plus precis),
     # sinon repli sur le crop du conteneur entier.
@@ -80,21 +104,36 @@ def scan():
         extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
 
     annotated_name = os.path.basename(det["annotated_path"]) if det["annotated_path"] else name
-    return render_template(
-        "result.html",
-        found=True,
-        container_found=det["found"],
-        bic=extraction["bic"] or "",
-        valid=extraction["valid"],
-        corrected=extraction.get("corrected", False),
-        bic_zone_found=zone is not None,
-        ocr_confidence=extraction["confidence"],
-        yolo_confidence=det["confidence"],
-        vertical=roi_vertical,
-        raw_text=" | ".join(extraction["raw"]),
-        image_url=url_for("uploads", name=annotated_name),
-        image_name=name,
-    )
+    return {
+        "found": True,
+        "container_found": det["found"],
+        "bic": extraction["bic"] or "",
+        "valid": extraction["valid"],
+        "corrected": extraction.get("corrected", False),
+        "bic_zone_found": zone is not None,
+        "ocr_confidence": extraction["confidence"],
+        "yolo_confidence": det["confidence"],
+        "vertical": roi_vertical,
+        "raw_text": " | ".join(extraction["raw"]),
+        "image_url": img_url(annotated_name),
+        "image_name": name,
+    }, None
+
+
+@app.route("/scan", methods=["POST"])
+def scan():
+    payload, error = _run_scan(request.files.get("image"))
+    if error:
+        return render_template("index.html", error=error), 400
+    return render_template("result.html", **payload)
+
+
+@app.route("/api/scan", methods=["POST"])
+def api_scan():
+    payload, error = _run_scan(request.files.get("image"), external=True)
+    if error:
+        return jsonify({"error": error}), 400
+    return jsonify(payload)
 
 
 @app.route("/confirm", methods=["POST"])
@@ -144,6 +183,61 @@ def dashboard():
     scans = db.list_scans(limit=1000)
     stats = _compute_stats(scans)
     return render_template("dashboard.html", **stats)
+
+
+# ── API JSON (front statique Vercel) ─────────────────────────────────────
+
+
+@app.route("/api/confirm", methods=["POST"])
+def api_confirm():
+    data = request.get_json(silent=True) or request.form
+    bic = (data.get("bic") or "").replace(" ", "").upper()
+    if not bic:
+        return jsonify({"error": "bic manquant"}), 400
+    confidence = data.get("ocr_confidence")
+    confidence = float(confidence) if confidence not in (None, "") else None
+    image_name = data.get("image_name")
+    image_path = f"uploads/{image_name}" if image_name else None
+    db.init_db()
+    scan_id = db.save_scan(bic, confidence, image_path)
+    return jsonify({"id": scan_id, "bic": bic})
+
+
+@app.route("/api/history")
+def api_history():
+    db.init_db()
+    scans = db.list_scans(limit=100)
+    for s in scans:
+        s["valid"] = ocr.validate_check_digit(s["bic"])
+        s["image_url"] = (
+            url_for("uploads", name=os.path.basename(s["image_path"]),
+                    _external=True)
+            if s.get("image_path") else None
+        )
+        s["created_at"] = s["created_at"].isoformat()
+    return jsonify({"scans": scans})
+
+
+@app.route("/api/dashboard")
+def api_dashboard():
+    db.init_db()
+    return jsonify(_compute_stats(db.list_scans(limit=1000)))
+
+
+@app.route("/api/scans/<int:scan_id>/delete", methods=["POST"])
+def api_delete_scan(scan_id):
+    db.delete_scan(scan_id)
+    return jsonify({"deleted": scan_id})
+
+
+@app.route("/api/scans/<int:scan_id>/update", methods=["POST"])
+def api_update_scan(scan_id):
+    data = request.get_json(silent=True) or request.form
+    bic = (data.get("bic") or "").replace(" ", "").upper()
+    if not bic:
+        return jsonify({"error": "bic manquant"}), 400
+    db.update_scan(scan_id, bic)
+    return jsonify({"updated": scan_id, "bic": bic})
 
 
 def _compute_stats(scans: list) -> dict:

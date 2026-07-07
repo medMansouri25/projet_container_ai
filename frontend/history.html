@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Historique — SmartContainer AI</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">
+      <svg class="icon icon-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6.5"/><path d="M10 6v4"/><path d="M14 6v4"/><path d="M2 12.5h20l-1.5 6a2 2 0 0 1-2 1.5h-13a2 2 0 0 1-2-1.5z"/></svg>
+      SmartContainer AI
+    </span>
+    <a href="index.html">Scanner</a>
+    <a href="history.html">Historique</a>
+    <a href="dashboard.html">Dashboard</a>
+  </nav>
+
+  <main class="wide">
+    <h1>Historique des scans</h1>
+    <div id="error-alert" class="alert" hidden></div>
+    <p id="empty" class="subtitle" hidden>Aucun scan confirmé pour le moment. <a href="index.html">Scanner un conteneur →</a></p>
+
+    <table class="history-table" id="table" hidden>
+      <thead>
+        <tr><th>Image</th><th>Code BIC</th><th>ISO 6346</th><th>Confiance OCR</th><th>Date</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/history.js"></script>
+</body>
+</html>
