@@ -142,13 +142,14 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
                         max(0, bx1 - mw):min(W, bx2 + mw)],
         }
 
-    if best_box and annotated_dir:
+    if (best_box or best_bic) and annotated_dir:
         os.makedirs(annotated_dir, exist_ok=True)
         annotated = img.copy()
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), (52, 152, 219), 3)
-        cv2.putText(annotated, f"Conteneur {out['confidence']:.0%}",
-                    (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
-                    (52, 152, 219), 2)
+        if best_box:
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), (52, 152, 219), 3)
+            cv2.putText(annotated, f"Conteneur {out['confidence']:.0%}",
+                        (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                        (52, 152, 219), 2)
         if best_bic:
             bx1, by1, bx2, by2 = best_bic
             cv2.rectangle(annotated, (bx1, by1), (bx2, by2), (60, 204, 46), 3)

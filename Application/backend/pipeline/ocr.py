@@ -390,12 +390,15 @@ def extract_bic(image, vertical: bool = False, reader=None) -> dict:
     repaired_votes = {}   # bic réparé -> (meilleur score, occurrences, conf, raw)
 
     # Vertical : le lecteur de colonnes empilées d'abord (le cas standard
-    # des cotes de conteneur, que la detection EasyOCR classique rate)
+    # des cotes de conteneur, que la detection EasyOCR classique rate).
+    # S'il produit un candidat coherent, il est PRIORITAIRE : les passes
+    # par rotation lisent du bruit non deterministe sur ce type de marquage
+    # et peuvent fabriquer un faux code plausible qui gagnerait le vote.
     if vertical:
         fragments = _read_stacked_columns(image, reader)
         if fragments:
             res = resolve_bic(fragments)
-            if res["bic"] and res["score"] <= 4:
+            if res["bic"] and res["score"] <= 10:
                 return {"bic": res["bic"], "valid": res["valid"],
                         "corrected": res["corrected"], "confidence": 0.9,
                         "raw": fragments}

@@ -54,8 +54,11 @@ def scan():
     file.save(image_path)
 
     det = detector.detect_container(image_path, annotated_dir=UPLOAD_FOLDER)
+    zone = det.get("bic_zone")
 
-    if not det["found"]:
+    # Abandon uniquement si NI conteneur NI zone BIC : un gros plan sur le
+    # marquage (conteneur hors cadre) reste lisible via la zone seule.
+    if not det["found"] and zone is None:
         return render_template(
             "result.html",
             found=False,
@@ -66,12 +69,11 @@ def scan():
     # OCR sur la zone NumeroBIC si le modele l'a trouvee (plus precis),
     # sinon repli sur le crop du conteneur entier.
     # roi_vertical = orientation de la ROI reellement lue (pour le badge).
-    zone = det.get("bic_zone")
     roi_vertical = det["vertical"]
     if zone is not None:
         extraction = ocr.extract_bic(zone["crop"], vertical=zone["vertical"])
         roi_vertical = zone["vertical"]
-        if not extraction["bic"]:
+        if not extraction["bic"] and det["found"]:
             extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
             roi_vertical = det["vertical"]
     else:
@@ -81,6 +83,7 @@ def scan():
     return render_template(
         "result.html",
         found=True,
+        container_found=det["found"],
         bic=extraction["bic"] or "",
         valid=extraction["valid"],
         corrected=extraction.get("corrected", False),

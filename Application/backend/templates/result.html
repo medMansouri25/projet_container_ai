@@ -28,7 +28,11 @@
       <div class="result-panel">
         {% if found %}
           <div class="badges">
-            <span class="badge">Conteneur {{ '%.0f' % (yolo_confidence * 100) }}%</span>
+            {% if container_found %}
+              <span class="badge">Conteneur {{ '%.0f' % (yolo_confidence * 100) }}%</span>
+            {% else %}
+              <span class="badge badge-info">Gros plan — lecture directe de la zone BIC</span>
+            {% endif %}
             {% if vertical %}<span class="badge badge-info">Texte vertical (ROI pivotée)</span>{% endif %}
             {% if bic_zone_found %}<span class="badge badge-info">Zone BIC localisée par le modèle</span>{% endif %}
             {% if bic and valid and corrected %}
