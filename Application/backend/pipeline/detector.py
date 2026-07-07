@@ -91,11 +91,12 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
                     best_bic_conf = c
                     best_bic = [int(v) for v in box.xyxy[0].tolist()]
 
-    # Modele specialiste zone BIC (entraine uniquement sur datasetEnt)
+    # Modele specialiste zone BIC (entraine uniquement sur datasetEnt).
+    # Seuil bas : une seule classe tres precise, mieux vaut attraper la zone.
     if best_bic is None:
         bic_model = _get_bic_model(models_dir)
         if bic_model is not None:
-            for result in bic_model(image_path, conf=conf, verbose=False):
+            for result in bic_model(image_path, conf=0.15, verbose=False):
                 for box in result.boxes:
                     c = float(box.conf[0])
                     if c > best_bic_conf:
@@ -111,11 +112,23 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
 
     if best_bic:
         bx1, by1, bx2, by2 = best_bic
+        # Marge autour de la zone : le chiffre de controle (encadre) suit le
+        # numero de serie dans le sens de lecture et se fait couper sinon.
+        # 40% dans le sens de lecture, 15% dans l'autre.
+        H, W = img.shape[:2]
+        zone_vertical = (by2 - by1) > (bx2 - bx1)
+        if zone_vertical:
+            mw = int(0.15 * (bx2 - bx1))
+            mh = int(0.40 * (by2 - by1))
+        else:
+            mw = int(0.40 * (bx2 - bx1))
+            mh = int(0.15 * (by2 - by1))
         out["bic_zone"] = {
             "bbox": best_bic,
             "confidence": round(best_bic_conf, 4),
             "vertical": (by2 - by1) > (bx2 - bx1),
-            "crop": img[max(0, by1):by2, max(0, bx1):bx2],
+            "crop": img[max(0, by1 - mh):min(H, by2 + mh),
+                        max(0, bx1 - mw):min(W, bx2 + mw)],
         }
 
     if best_box and annotated_dir:

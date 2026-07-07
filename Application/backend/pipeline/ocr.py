@@ -149,44 +149,87 @@ def _regions(image):
     yield image[0:int(h * 0.35), 0:w], 2               # bande superieure
 
 
+_TARGET_H = 160  # hauteur minimale d'une zone avant OCR (petites zones YOLO)
+
+
+def _ensure_height(img):
+    """Agrandit les petits crops (zone BIC ~30px de haut) à une hauteur lisible."""
+    h = img.shape[0]
+    if 0 < h < _TARGET_H:
+        s = _TARGET_H / h
+        img = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
+    return img
+
+
+def _variants(image):
+    """Variantes de prétraitement : brute, CLAHE (contraste local), Otsu binaire
+    (texte force en sombre sur clair). Chaque variante peut réussir là où les
+    autres échouent selon peinture/rouille/éclairage."""
+    yield image
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8)).apply(gray)
+    yield cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR)
+    _, th = cv2.threshold(clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if th.mean() < 127:
+        th = 255 - th
+    yield cv2.cvtColor(th, cv2.COLOR_GRAY2BGR)
+
+
 def extract_bic(image, vertical: bool = False, reader=None) -> dict:
     """
-    Extrait le code BIC d'un crop de conteneur (image BGR numpy).
-    vertical=True → rotation 90° horaire avant OCR (texte vertical).
+    Extrait le code BIC d'un crop (conteneur entier ou zone BIC localisée).
+    vertical=True → essaie les deux rotations 90° (le texte vertical se lit
+    de haut en bas ou de bas en haut selon le côté du conteneur).
+    Stratégie : variantes de prétraitement × échelles × régions, arrêt dès
+    qu'un BIC valide sans correction est lu, sinon vote majoritaire parmi
+    les codes réparés.
     Retourne {"bic", "valid", "corrected", "confidence", "raw"}.
     """
     if reader is None:
         reader = _get_reader()
 
+    orientations = [image]
     if vertical:
-        image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+        orientations = [cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
+                        cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)]
 
     best = {"bic": None, "valid": False, "corrected": False,
             "confidence": 0.0, "raw": []}
+    repaired_votes = {}   # bic répa ré -> (occurrences, conf, raw)
 
-    for region, base_scale in _regions(image):
-        if region.size == 0:
-            continue
-        for scale in _SCALES:
-            s = scale * base_scale
-            img = region if s == 1 else cv2.resize(
-                region, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
-            results = reader.readtext(img, allowlist=ALLOWLIST)
-            texts = [r[1] for r in results]
-            confs = [float(r[2]) for r in results]
-            if not best["raw"]:
-                best["raw"] = texts
-
-            res = resolve_bic(texts)
-            if res["bic"] is None:
+    for oriented in orientations:
+        for region, base_scale in _regions(oriented):
+            if region.size == 0:
                 continue
+            region = _ensure_height(region)
+            for variant in _variants(region):
+                for scale in _SCALES:
+                    s = scale * base_scale
+                    img = variant if s == 1 else cv2.resize(
+                        variant, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
+                    results = reader.readtext(img, allowlist=ALLOWLIST)
+                    texts = [r[1] for r in results]
+                    confs = [float(r[2]) for r in results]
+                    if not best["raw"]:
+                        best["raw"] = texts
 
-            conf = round(sum(confs) / len(confs), 4) if confs else 0.0
-            if not res["corrected"]:
-                # BIC valide tel quel : on s'arrete la
-                best.update(res, confidence=conf, raw=texts)
-                return best
-            if best["bic"] is None:
-                best.update(res, confidence=conf, raw=texts)
+                    res = resolve_bic(texts)
+                    if res["bic"] is None:
+                        continue
+
+                    conf = round(sum(confs) / len(confs), 4) if confs else 0.0
+                    if not res["corrected"]:
+                        # BIC valide tel quel : reponse definitive
+                        best.update(res, confidence=conf, raw=texts)
+                        return best
+                    n, c, r = repaired_votes.get(res["bic"], (0, 0.0, texts))
+                    repaired_votes[res["bic"]] = (n + 1, max(c, conf), r)
+
+    if repaired_votes:
+        # vote majoritaire parmi les codes repares (puis meilleure confiance)
+        bic, (n, conf, raw) = max(repaired_votes.items(),
+                                  key=lambda kv: (kv[1][0], kv[1][1]))
+        best.update({"bic": bic, "valid": True, "corrected": True,
+                     "confidence": conf, "raw": raw})
 
     return best
