@@ -67,3 +67,9 @@ runs/
 
 # Uploads runtime de l'app web
 Application/backend/uploads/
+
+# Dataset specialiste NumeroBIC (6289 images - hors git)
+Application/datasetEnt/
+
+# Modele specialiste BIC tracke
+!Application/models/bic/best_*.pt

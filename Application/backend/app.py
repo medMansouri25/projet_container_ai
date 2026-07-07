@@ -63,7 +63,15 @@ def scan():
             image_name=name,
         )
 
-    extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
+    # OCR sur la zone NumeroBIC si le modele l'a trouvee (plus precis),
+    # sinon repli sur le crop du conteneur entier
+    zone = det.get("bic_zone")
+    if zone is not None:
+        extraction = ocr.extract_bic(zone["crop"], vertical=zone["vertical"])
+        if not extraction["bic"]:
+            extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
+    else:
+        extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
 
     annotated_name = os.path.basename(det["annotated_path"]) if det["annotated_path"] else name
     return render_template(
@@ -72,6 +80,7 @@ def scan():
         bic=extraction["bic"] or "",
         valid=extraction["valid"],
         corrected=extraction.get("corrected", False),
+        bic_zone_found=zone is not None,
         ocr_confidence=extraction["confidence"],
         yolo_confidence=det["confidence"],
         vertical=det["vertical"],

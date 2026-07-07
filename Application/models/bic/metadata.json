@@ -1,0 +1,24 @@
+{
+  "v1": {
+    "model_path": "D:\\ProjetMarsa\\Application\\models\\bic\\best_v1.pt",
+    "classes": [],
+    "mAP50": 0.9949785867237687,
+    "mAP50_95": 0.8130857048029398,
+    "precision": 0.9978579470307427,
+    "recall": 0.997520661079873,
+    "run": "run_002",
+    "date": "2026-07-07 15:39",
+    "epochs": 20,
+    "tuned": false,
+    "hyperparameters": {
+      "lr0": 0.01,
+      "lrf": 0.01,
+      "momentum": 0.937,
+      "weight_decay": 0.0005,
+      "batch": -1,
+      "imgsz": 640,
+      "epochs": 20,
+      "optimizer": "auto"
+    }
+  }
+}

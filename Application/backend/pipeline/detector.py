@@ -39,6 +39,26 @@ def _get_model(models_dir: str):
     return _model_cache[path], path
 
 
+def _get_bic_model(models_dir: str):
+    """Modèle spécialiste zone BIC (models/bic/best_vN.pt ou env BIC_MODEL_PATH).
+    Retourne None s'il n'existe pas encore."""
+    path = os.environ.get("BIC_MODEL_PATH")
+    if not path:
+        bic_dir = os.path.join(models_dir, "bic")
+        meta = os.path.join(bic_dir, "metadata.json")
+        if os.path.exists(meta):
+            with open(meta, encoding="utf-8") as f:
+                metadata = json.load(f)
+            if metadata:
+                latest = sorted(metadata.keys())[-1]
+                path = os.path.join(bic_dir, f"best_{latest}.pt")
+    if not path or not os.path.exists(path):
+        return None
+    if path not in _model_cache:
+        _model_cache[path] = YOLO(path)
+    return _model_cache[path]
+
+
 def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
                      conf: float = 0.25, annotated_dir: str = None) -> dict:
     """
@@ -52,18 +72,35 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
         raise ValueError(f"Image illisible : {image_path}")
 
     out = {"found": False, "bbox": None, "confidence": 0.0, "vertical": False,
-           "crop": None, "model_path": model_path, "annotated_path": None}
+           "crop": None, "bic_zone": None, "model_path": model_path,
+           "annotated_path": None}
 
     best_box = None
+    best_bic = None
+    best_bic_conf = 0.0
     for result in model(image_path, conf=conf, verbose=False):
         for box in result.boxes:
             label = result.names[int(box.cls[0])]
-            if label != "Conteneur":
-                continue
             c = float(box.conf[0])
-            if c > out["confidence"]:
-                out["confidence"] = round(c, 4)
-                best_box = [int(v) for v in box.xyxy[0].tolist()]
+            if label == "Conteneur":
+                if c > out["confidence"]:
+                    out["confidence"] = round(c, 4)
+                    best_box = [int(v) for v in box.xyxy[0].tolist()]
+            elif label == "NumeroBIC":
+                if c > best_bic_conf:
+                    best_bic_conf = c
+                    best_bic = [int(v) for v in box.xyxy[0].tolist()]
+
+    # Modele specialiste zone BIC (entraine uniquement sur datasetEnt)
+    if best_bic is None:
+        bic_model = _get_bic_model(models_dir)
+        if bic_model is not None:
+            for result in bic_model(image_path, conf=conf, verbose=False):
+                for box in result.boxes:
+                    c = float(box.conf[0])
+                    if c > best_bic_conf:
+                        best_bic_conf = c
+                        best_bic = [int(v) for v in box.xyxy[0].tolist()]
 
     if best_box:
         x1, y1, x2, y2 = best_box
@@ -72,15 +109,30 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
         out["vertical"] = (y2 - y1) > (x2 - x1)
         out["crop"] = img[max(0, y1):y2, max(0, x1):x2]
 
-        if annotated_dir:
-            os.makedirs(annotated_dir, exist_ok=True)
-            annotated = img.copy()
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), (52, 152, 219), 3)
-            cv2.putText(annotated, f"Conteneur {out['confidence']:.0%}",
-                        (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
-                        (52, 152, 219), 2)
-            name = os.path.splitext(os.path.basename(image_path))[0] + "_annotated.jpg"
-            out["annotated_path"] = os.path.join(annotated_dir, name)
-            cv2.imwrite(out["annotated_path"], annotated)
+    if best_bic:
+        bx1, by1, bx2, by2 = best_bic
+        out["bic_zone"] = {
+            "bbox": best_bic,
+            "confidence": round(best_bic_conf, 4),
+            "vertical": (by2 - by1) > (bx2 - bx1),
+            "crop": img[max(0, by1):by2, max(0, bx1):bx2],
+        }
+
+    if best_box and annotated_dir:
+        os.makedirs(annotated_dir, exist_ok=True)
+        annotated = img.copy()
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), (52, 152, 219), 3)
+        cv2.putText(annotated, f"Conteneur {out['confidence']:.0%}",
+                    (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                    (52, 152, 219), 2)
+        if best_bic:
+            bx1, by1, bx2, by2 = best_bic
+            cv2.rectangle(annotated, (bx1, by1), (bx2, by2), (60, 204, 46), 3)
+            cv2.putText(annotated, f"BIC {best_bic_conf:.0%}",
+                        (bx1, max(20, by1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                        (60, 204, 46), 2)
+        name = os.path.splitext(os.path.basename(image_path))[0] + "_annotated.jpg"
+        out["annotated_path"] = os.path.join(annotated_dir, name)
+        cv2.imwrite(out["annotated_path"], annotated)
 
     return out
