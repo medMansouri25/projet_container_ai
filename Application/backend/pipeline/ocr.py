@@ -309,20 +309,7 @@ def _read_stacked_columns(image, reader) -> list:
     4. OCR caractère par caractère
     Retourne une liste de chaînes (une par colonne, '?' si caractère illisible).
     """
-    import numpy as np
-
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    S, V = hsv[:, :, 1], hsv[:, :, 2]
-    # Seuils adaptatifs : sur une peinture claire et peu saturee (vert/gris
-    # clair), le seuil de base englobe toute la paroi -> on resserre jusqu'a
-    # ce que le masque ne garde qu'une fraction credible de texte (<10%)
-    bw = None
-    for s_thr, v_thr in ((70, 140), (50, 180), (35, 210)):
-        cand = ((S < s_thr) & (V > v_thr)).astype("uint8") * 255
-        bw = cand
-        if cand.mean() / 255 <= 0.10:
-            break
-    bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    bw = _white_text_mask(image)
     H, W = bw.shape
 
     colsum = bw.sum(axis=0) / 255
@@ -372,6 +359,65 @@ def _read_stacked_columns(image, reader) -> list:
     return fragments
 
 
+def _white_text_mask(image):
+    """Masque adaptatif de la peinture blanche (partagé colonnes/orientation)."""
+    import numpy as np
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    S, V = hsv[:, :, 1], hsv[:, :, 2]
+    bw = None
+    for s_thr, v_thr in ((70, 140), (50, 180), (35, 210)):
+        cand = ((S < s_thr) & (V > v_thr)).astype("uint8") * 255
+        bw = cand
+        if cand.mean() / 255 <= 0.10:
+            break
+    return cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+
+
+def _detect_text_orientation(image):
+    """
+    Détermine l'orientation du TEXTE dans un crop (pas celle de la boîte :
+    un marquage horizontal sur 2 lignes donne une boîte plus haute que
+    large). Composantes connexes du masque blanc → les caractères
+    s'alignent-ils davantage en lignes (horizontal) ou en colonnes
+    (vertical empilé) ?
+    Retourne 'horizontal', 'vertical' ou 'unknown'.
+    """
+    import numpy as np
+    bw = _white_text_mask(image)
+    n, _, stats, _ = cv2.connectedComponentsWithStats(bw)
+    H, W = bw.shape
+    boxes = []
+    for i in range(1, n):
+        x, y, w, h, area = stats[i]
+        if 25 <= area <= 0.05 * H * W and h < 0.5 * H and w < 0.5 * W:
+            boxes.append((x + w / 2, y + h / 2, w, h))
+    if len(boxes) < 5:
+        return "unknown"
+    med_h = sorted(b[3] for b in boxes)[len(boxes) // 2]
+    med_w = sorted(b[2] for b in boxes)[len(boxes) // 2]
+
+    def max_group(values, tol):
+        values = sorted(values)
+        best = cur = 1
+        anchor = values[0]
+        for v in values[1:]:
+            if v - anchor <= tol:
+                cur += 1
+                best = max(best, cur)
+            else:
+                anchor = v
+                cur = 1
+        return best
+
+    rows = max_group([b[1] for b in boxes], med_h * 0.7)   # même ligne
+    cols = max_group([b[0] for b in boxes], med_w * 0.7)   # même colonne
+    if rows >= 4 and rows > cols:
+        return "horizontal"
+    if cols >= 4 and cols > rows:
+        return "vertical"
+    return "unknown"
+
+
 def extract_bic(image, vertical: bool = False, reader=None,
                 is_zone: bool = False, time_budget: float = 25.0) -> dict:
     """
@@ -394,6 +440,13 @@ def extract_bic(image, vertical: bool = False, reader=None,
 
     if reader is None:
         reader = _get_reader()
+
+    # La forme de la boite ment souvent (marquage horizontal sur 2 lignes =
+    # boite haute) : on tranche avec l'orientation reelle des caracteres
+    if vertical:
+        detected = _detect_text_orientation(image)
+        if detected == "horizontal":
+            vertical = False
 
     # Vertical : essayer d'abord SANS rotation (marquage en caractères
     # empilés, chacun droit — le cas le plus courant sur les côtés),
