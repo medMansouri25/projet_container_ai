@@ -363,16 +363,26 @@ def _read_stacked_columns(image, reader) -> list:
     return fragments
 
 
-def extract_bic(image, vertical: bool = False, reader=None) -> dict:
+def extract_bic(image, vertical: bool = False, reader=None,
+                is_zone: bool = False, time_budget: float = 25.0) -> dict:
     """
     Extrait le code BIC d'un crop (conteneur entier ou zone BIC localisée).
     vertical=True → essaie les deux rotations 90° (le texte vertical se lit
     de haut en bas ou de bas en haut selon le côté du conteneur).
+    is_zone=True → le crop EST déjà la zone du marquage (localisée par le
+    modèle spécialiste) : inutile de balayer des sous-régions ou de forcer
+    les grandes échelles — divise le nombre de passes par ~4 (crucial sur
+    le VPS sans GPU où chaque lecture EasyOCR coûte ~1-2 s).
+    time_budget : durée max en secondes ; à expiration, retourne le meilleur
+    candidat trouvé jusqu'ici plutôt que d'épuiser toutes les passes.
     Stratégie : variantes de prétraitement × échelles × régions, arrêt dès
     qu'un BIC valide sans correction est lu, sinon vote majoritaire parmi
     les codes réparés.
     Retourne {"bic", "valid", "corrected", "confidence", "raw"}.
     """
+    import time
+    deadline = time.monotonic() + time_budget
+
     if reader is None:
         reader = _get_reader()
 
@@ -407,13 +417,22 @@ def extract_bic(image, vertical: bool = False, reader=None) -> dict:
                                               fragments, res["corrected"])
             best["raw"] = fragments
 
+    scales = (1, 2) if is_zone else _SCALES
+
+    def _timeout():
+        return time.monotonic() > deadline
+
     for oriented in orientations:
-        for region, base_scale in _regions(oriented):
-            if region.size == 0:
+        # zone deja localisee : une seule region (le crop entier)
+        regions = [(oriented, 1)] if is_zone else _regions(oriented)
+        for region, base_scale in regions:
+            if region.size == 0 or _timeout():
                 continue
             region = _ensure_height(region)
             for variant in _variants(region):
-                for scale in _SCALES:
+                for scale in scales:
+                    if _timeout():
+                        break
                     s = scale * base_scale
                     img = variant if s == 1 else cv2.resize(
                         variant, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)

@@ -95,10 +95,12 @@ def _run_scan(file, external: bool = False):
     # roi_vertical = orientation de la ROI reellement lue (pour le badge).
     roi_vertical = det["vertical"]
     if zone is not None:
-        extraction = ocr.extract_bic(zone["crop"], vertical=zone["vertical"])
+        extraction = ocr.extract_bic(zone["crop"], vertical=zone["vertical"],
+                                     is_zone=True)
         roi_vertical = zone["vertical"]
         if not extraction["bic"] and det["found"]:
-            extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
+            extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"],
+                                         time_budget=15.0)
             roi_vertical = det["vertical"]
     else:
         extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
