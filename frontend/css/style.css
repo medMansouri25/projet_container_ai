@@ -12,7 +12,7 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* l attribut hidden doit toujours gagner, meme sur les .btn en inline-flex */
+/* l'attribut hidden doit toujours gagner, meme sur les .btn en inline-flex */
 [hidden] { display: none !important; }
 
 body {
@@ -301,3 +301,70 @@ main.wide { max-width: 1180px; }
   min-width: 4px;
 }
 .hbar-count { color: var(--muted); font-size: 0.85rem; width: 2rem; text-align: right; }
+
+/* ── Responsive / mobile-first ──────────────────────────────── */
+/* Conteneur de tableau defilant : jamais de debordement horizontal */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+}
+
+@media (max-width: 640px) {
+  nav {
+    flex-wrap: wrap;
+    padding: 0.7rem 1rem;
+    gap: 0.5rem 1.1rem;
+    justify-content: center;
+  }
+  nav .brand { margin-right: 0; width: 100%; justify-content: center; }
+  nav a { font-size: 0.95rem; }
+
+  main { padding: 0 0.8rem; margin: 1.1rem auto; }
+  h1 { font-size: 1.25rem; }
+  .subtitle { font-size: 0.9rem; }
+
+  /* Scanner : gros boutons tactiles pleine largeur */
+  .dropzone { padding: 2rem 1rem; }
+  .dropzone .btn,
+  .camera-actions .btn {
+    width: 100%;
+    margin: 0.3rem 0;
+    padding: 0.85rem 1rem;
+    font-size: 1rem;
+  }
+  .camera-zone video, .preview-zone img { max-height: 55vh; }
+
+  /* Resultat */
+  .result-panel { padding: 1rem; }
+  .confirm-form input[type="text"] {
+    font-size: 1.15rem;
+    letter-spacing: 1px;
+  }
+  .badge { font-size: 0.75rem; }
+
+  /* Historique : cellules compactes, actions tactiles */
+  .history-table th, .history-table td { padding: 0.5rem 0.6rem; font-size: 0.85rem; }
+  .thumb { width: 56px; height: 40px; }
+  .bic-input { width: 7.2rem; font-size: 0.85rem; letter-spacing: 0; }
+  .actions .btn-small { padding: 0.55rem 0.65rem; width: auto; margin: 0.1rem; }
+  .btn-save { width: auto; padding: 0.5rem 0.7rem; font-size: 0.8rem; }
+
+  /* Dashboard : 2 KPIs par ligne, graphiques compacts */
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 0.7rem; }
+  .kpi-card { padding: 0.9rem 1rem; }
+  .kpi-value { font-size: 1.5rem; }
+  .kpi-label { font-size: 0.75rem; }
+  .bar-chart { height: 190px; gap: 3px; }
+  .bar-count { font-size: 0.6rem; }
+  .bar-label { font-size: 0.52rem; }
+  .donut-wrap { gap: 1rem; }
+  .donut { width: 105px; height: 105px; }
+  .donut-hole { width: 68px; height: 68px; font-size: 1.05rem; }
+  .legend { font-size: 0.82rem; }
+}
+
+@media (max-width: 380px) {
+  .kpi-grid { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .hbar-code { width: 2.9rem; font-size: 0.85rem; }
+}
