@@ -12,6 +12,9 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* l attribut hidden doit toujours gagner, meme sur les .btn en inline-flex */
+[hidden] { display: none !important; }
+
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
   background: var(--bg);
