@@ -312,7 +312,16 @@ def _read_stacked_columns(image, reader) -> list:
     import numpy as np
 
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    bw = ((hsv[:, :, 1] < 70) & (hsv[:, :, 2] > 140)).astype("uint8") * 255
+    S, V = hsv[:, :, 1], hsv[:, :, 2]
+    # Seuils adaptatifs : sur une peinture claire et peu saturee (vert/gris
+    # clair), le seuil de base englobe toute la paroi -> on resserre jusqu'a
+    # ce que le masque ne garde qu'une fraction credible de texte (<10%)
+    bw = None
+    for s_thr, v_thr in ((70, 140), (50, 180), (35, 210)):
+        cand = ((S < s_thr) & (V > v_thr)).astype("uint8") * 255
+        bw = cand
+        if cand.mean() / 255 <= 0.10:
+            break
     bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     H, W = bw.shape
 
@@ -422,7 +431,11 @@ def extract_bic(image, vertical: bool = False, reader=None,
     def _timeout():
         return time.monotonic() > deadline
 
-    for oriented in orientations:
+    for orient_idx, oriented in enumerate(orientations):
+        # Les lectures sur image pivotee (caracteres couches) sont bruitees
+        # et non deterministes : leurs candidats repares sont penalises pour
+        # ne jamais battre une lecture faite a l'endroit
+        rot_penalty = 6 if (vertical and orient_idx > 0) else 0
         # zone deja localisee : une seule region (le crop entier)
         regions = [(oriented, 1)] if is_zone else _regions(oriented)
         for region, base_scale in regions:
@@ -461,11 +474,12 @@ def extract_bic(image, vertical: bool = False, reader=None,
                             best.update(res, confidence=conf, raw=texts)
                             best.pop("score", None)
                             return best
+                        score = res["score"] + rot_penalty
                         sc, n, c, r, corr = repaired_votes.get(
-                            res["bic"], (res["score"], 0, 0.0, texts,
+                            res["bic"], (score, 0, 0.0, texts,
                                          res["corrected"]))
                         repaired_votes[res["bic"]] = (
-                            min(sc, res["score"]), n + 1, max(c, conf), r,
+                            min(sc, score), n + 1, max(c, conf), r,
                             corr and res["corrected"])
 
     if repaired_votes:

@@ -90,6 +90,7 @@ captureBtn.addEventListener("click", () => {
 /* ── Analyse ── */
 analyzeBtn.addEventListener("click", async () => {
   if (!currentFile) return;
+  errorAlert.hidden = true;
   loading.hidden = false;
   analyzeBtn.disabled = true;
   try {
