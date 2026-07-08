@@ -13,6 +13,10 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Modeles EasyOCR cuits dans l'image (~100 Mo) : sinon ils sont
+# retelecharges au premier scan apres chaque deploiement
+RUN python -c "import easyocr; easyocr.Reader(['en'], verbose=False)"
+
 # Code source
 COPY Application/backend/ ./Application/backend/
 COPY Application/ml/ ./Application/ml/

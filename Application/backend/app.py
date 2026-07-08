@@ -56,6 +56,44 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
+MAX_IMAGE_SIDE = 1600  # les photos 12 MP des telephones ralentissent tout
+
+
+def _limit_image_size(image_path: str) -> None:
+    """Redimensionne l'image sur disque si son grand cote depasse la limite.
+    YOLO et l'OCR n'ont pas besoin de plus, et chaque etape en profite."""
+    import cv2
+    img = cv2.imread(image_path)
+    if img is None:
+        return
+    h, w = img.shape[:2]
+    big = max(h, w)
+    if big > MAX_IMAGE_SIDE:
+        s = MAX_IMAGE_SIDE / big
+        img = cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+        cv2.imwrite(image_path, img)
+
+
+def _warmup():
+    """Charge les modeles (YOLO x2 + EasyOCR) au demarrage du conteneur :
+    le premier scan d'un utilisateur ne paie plus ~60s de chargement."""
+    try:
+        import numpy as np
+        import cv2
+        img = np.zeros((320, 320, 3), dtype=np.uint8)
+        p = os.path.join(UPLOAD_FOLDER, "_warmup.jpg")
+        cv2.imwrite(p, img)
+        detector.detect_container(p)
+        ocr._get_reader().readtext(img)
+        os.remove(p)
+        print("Warmup termine : modeles charges en memoire")
+    except Exception as e:
+        print(f"Warmup echoue (non bloquant) : {e}")
+
+
+import threading
+threading.Thread(target=_warmup, daemon=True).start()
+
 
 @app.route("/")
 def index():
@@ -77,6 +115,7 @@ def _run_scan(file, external: bool = False):
     name = f"{uuid.uuid4().hex[:12]}{ext}"
     image_path = os.path.join(UPLOAD_FOLDER, name)
     file.save(image_path)
+    _limit_image_size(image_path)
 
     det = detector.detect_container(image_path, annotated_dir=UPLOAD_FOLDER)
     zone = det.get("bic_zone")
