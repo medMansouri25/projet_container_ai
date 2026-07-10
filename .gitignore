@@ -73,3 +73,13 @@ Application/datasetEnt/
 
 # Modele specialiste BIC tracke
 !Application/models/bic/best_*.pt
+
+# Dataset caractere (derive + brut tuteur, volumineux - hors git)
+Application/dataset/char/
+Application/dataset/ocr_container-*/
+
+# Modele caractere tracke
+!Application/models/char/best_*.pt
+
+# Rapports d entrainement char (110 Mo, derives - hors git)
+Application/reports/char/

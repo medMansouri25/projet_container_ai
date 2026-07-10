@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pipeline"))
 import db
 import detector
 import ocr
+import char_reader
 
 app = Flask(__name__)
 # Derriere le tunnel Cloudflare : respecter Host / X-Forwarded-Proto pour
@@ -100,6 +101,28 @@ def index():
     return render_template("index.html")
 
 
+def _extract_bic(crop, vertical, is_zone):
+    """
+    Lit le code BIC d'un crop. Moteur principal : EasyOCR (éprouvé, robuste
+    sur les codes conteneurs dégradés). Secours : YOLO caractère (architecture
+    du tuteur) — sollicité uniquement si EasyOCR ne lit rien, ce qui évite
+    tout risque de faux code (le char ne s'impose jamais à EasyOCR).
+    Le champ "engine" indique quel moteur a fourni le résultat.
+    """
+    res = ocr.extract_bic(crop, vertical=vertical, is_zone=is_zone)
+    res["engine"] = "easyocr"
+    if res["bic"]:
+        return res
+
+    char_model = detector._get_char_model(detector.DEFAULT_MODELS_DIR)
+    if char_model is not None:
+        c = char_reader.read_bic(crop, model=char_model, vertical=vertical)
+        if c["bic"]:
+            c["engine"] = "char"
+            return c
+    return res
+
+
 def _run_scan(file, external: bool = False):
     """
     Pipeline complet sur un fichier uploadé. Retourne (payload, erreur).
@@ -129,20 +152,17 @@ def _run_scan(file, external: bool = False):
         return {"found": False, "image_url": img_url(name),
                 "image_name": name}, None
 
-    # OCR sur la zone NumeroBIC si le modele l'a trouvee (plus precis),
-    # sinon repli sur le crop du conteneur entier.
-    # roi_vertical = orientation de la ROI reellement lue (pour le badge).
+    # Lecture : YOLO caractere (architecture tuteur) en principal, EasyOCR
+    # en secours. roi_vertical = orientation de la ROI reellement lue.
     roi_vertical = det["vertical"]
     if zone is not None:
-        extraction = ocr.extract_bic(zone["crop"], vertical=zone["vertical"],
-                                     is_zone=True)
+        extraction = _extract_bic(zone["crop"], zone["vertical"], is_zone=True)
         roi_vertical = zone["vertical"]
         if not extraction["bic"] and det["found"]:
-            extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"],
-                                         time_budget=15.0)
+            extraction = _extract_bic(det["crop"], det["vertical"], is_zone=False)
             roi_vertical = det["vertical"]
     else:
-        extraction = ocr.extract_bic(det["crop"], vertical=det["vertical"])
+        extraction = _extract_bic(det["crop"], det["vertical"], is_zone=False)
 
     annotated_name = os.path.basename(det["annotated_path"]) if det["annotated_path"] else name
     return {

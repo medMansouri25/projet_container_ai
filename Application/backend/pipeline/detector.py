@@ -59,6 +59,26 @@ def _get_bic_model(models_dir: str):
     return _model_cache[path]
 
 
+def _get_char_model(models_dir: str):
+    """Modèle de lecture caractère (models/char/best_vN.pt ou env CHAR_MODEL_PATH).
+    36 classes 0-9/A-Z — architecture du tuteur. None s'il n'existe pas encore."""
+    path = os.environ.get("CHAR_MODEL_PATH")
+    if not path:
+        char_dir = os.path.join(models_dir, "char")
+        meta = os.path.join(char_dir, "metadata.json")
+        if os.path.exists(meta):
+            with open(meta, encoding="utf-8") as f:
+                metadata = json.load(f)
+            if metadata:
+                latest = sorted(metadata.keys())[-1]
+                path = os.path.join(char_dir, f"best_{latest}.pt")
+    if not path or not os.path.exists(path):
+        return None
+    if path not in _model_cache:
+        _model_cache[path] = YOLO(path)
+    return _model_cache[path]
+
+
 def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
                      conf: float = 0.25, annotated_dir: str = None) -> dict:
     """
