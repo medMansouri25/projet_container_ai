@@ -83,3 +83,7 @@ Application/dataset/ocr_container-*/
 
 # Rapports d entrainement char (110 Mo, derives - hors git)
 Application/reports/char/
+
+# Bilans pour le tuteur (hors git)
+BILAN_*.md
+BILAN_Travail_*.md
