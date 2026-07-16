@@ -45,7 +45,9 @@ _tmp_crop.png
 test_app.py
 
 # Docs internes
-docs/
+# docs internes AB Method (trackers, handoffs) hors git ; la doc projet (*.md racine de docs/) est versionnee
+docs/tasks/
+docs/handoffs/
 CONTEXT.md
 ReformulationBesoins.md
 
