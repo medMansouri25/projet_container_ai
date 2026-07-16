@@ -20,9 +20,9 @@ from datetime import datetime
 
 from ultralytics import YOLO
 
-DEFAULT_BASE_MODEL = os.path.join(
-    os.path.dirname(__file__), "..", "..", "TestYolo", "yolo11m.pt"
-)
+# nom simple : ultralytics telecharge automatiquement le modele de base
+# s'il est absent (plus de dependance au dossier TestYolo supprime)
+DEFAULT_BASE_MODEL = "yolo11m.pt"
 DEFAULT_DATASET_DIR = os.path.join(os.path.dirname(__file__), "..", "dataset")
 DEFAULT_MODELS_DIR  = os.path.join(os.path.dirname(__file__), "..", "models")
 DEFAULT_REPORTS_DIR = os.path.join(os.path.dirname(__file__), "..", "reports")
