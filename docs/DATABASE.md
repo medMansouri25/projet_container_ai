@@ -1,6 +1,6 @@
 # DATABASE — Modèle de données
 
-> **Dernière mise à jour** : 2026-07-16
+> **Dernière mise à jour** : 2026-07-20
 
 ## Actuel (V1)
 
@@ -30,24 +30,43 @@ CREATE TABLE IF NOT EXISTS scans (
 - Les images vivent sur le **volume VPS** (`/root/smartcontainer_uploads`), la base ne
   stocke que le chemin. Conséquence : la base est portable, les images liées au VPS.
 
-## Cible (SPEC_V2 §12 — hypothèse, dépend des questions Q1/Q3)
+## Dossier de passage (V2 — schéma normalisé, implémenté 2026-07-20)
+
+Schéma normalisé SPEC §12 créé par `init_dossier_db()` (`db.py`). Périmètre
+vision-only (ADR-11) : pas de `chauffeur` ni `document`. Modèle **symétrique**
+(ADR-12) — 0..1 conteneur + 0..1 camion, validable dès **≥1 entité**.
 
 ```sql
--- Esquisse indicative, à valider avec le tuteur
-dossier_passage (id UUID, statut, source, voie, created_at, validated_at)
-camion          (dossier_id FK, plaque)
-conteneur       (dossier_id FK, code_iso, dimension)
-chauffeur       (dossier_id FK, identifiant)
-document        (dossier_id FK, type, reference)
-detection       (id, dossier_id FK, type, valeur, confidence,
-                 bbox, timestamp)          -- preuve brute IA, traçabilité
+dossiers (
+    id SERIAL PK, statut VARCHAR(16) DEFAULT 'en_attente',   -- en_attente | valide | abandonne
+    source VARCHAR(16), voie VARCHAR(32),
+    created_at TIMESTAMPTZ DEFAULT now(), validated_at TIMESTAMPTZ)
+conteneurs (id SERIAL PK, dossier_id INT UNIQUE FK→dossiers ON DELETE CASCADE,
+            code_iso VARCHAR(11), dimension VARCHAR(16))     -- 0..1, valeur VALIDÉE
+camions    (id SERIAL PK, dossier_id INT UNIQUE FK→dossiers ON DELETE CASCADE,
+            immatriculation VARCHAR(32))                     -- 0..1, valeur VALIDÉE
+detections (id SERIAL PK, dossier_id INT FK→dossiers ON DELETE CASCADE,
+            type VARCHAR(16), valeur TEXT, confidence REAL,
+            bbox JSONB, image_path TEXT, timestamp TIMESTAMPTZ DEFAULT now())
 ```
 
-Principe : entité métier = information **validée** ; `detection` = **preuve brute**
-horodatée (support du linking et de l'audit).
+Principe : entité métier (conteneur/camion) = information **validée** ; `detections`
+= **preuve brute IA** horodatée (traçabilité, support de l'agrégation).
 
-**Migration** : chaque ligne `scans` ↦ un `dossier_passage` mono-conteneur
-(statut validé) + sa `detection`. Aucune perte.
+| Opération | Fonction (`db.py`) |
+|---|---|
+| Init idempotent | `init_dossier_db()` |
+| Ouvrir passage | `create_dossier(source, voie=None) -> id` (statut `en_attente`) |
+| Rattacher entité (upsert 0..1) | `set_conteneur(id, code_iso, dim)` · `set_camion(id, immat)` |
+| Preuve brute | `add_detection(id, type, valeur, confidence, bbox, image_path)` |
+| Valider | `validate_dossier(id) -> bool` — **refuse si 0 entité** (I3) |
+| Abandonner | `abandon_dossier(id)` (soft-delete → `abandonne`) |
+| Lire agrégé / lister | `get_dossier(id)` · `list_dossiers(statut=None, limit)` |
+| Migration | `migrate_scans_to_dossiers() -> int` |
+
+**Migration** : chaque ligne `scans` ↦ un `dossier` `valide` mono-conteneur + sa
+`detection` (`type='conteneur'`). Aucune perte. La table `scans` reste en place
+(source de la migration, pas encore supprimée).
 
 ## Opérations
 

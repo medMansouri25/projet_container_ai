@@ -1,6 +1,13 @@
 # DOMAIN_MODEL — Entités métier
 
-> **Dernière mise à jour** : 2026-07-16
+> **Dernière mise à jour** : 2026-07-18
+
+> **Recentrage périmètre (2026-07-18, ADR-11)** : le système est **vision-only
+> depuis vidéo/webcam**. Entités reconnues : **Conteneur** (code BIC) et
+> **Immatriculation** (plaque camion) ; icônes IMDG en perspective. Le
+> **conteneur est l'ancre** du dossier (la plaque est facultative, liable en
+> différé). **Hors périmètre** : documents (DUM, bon de livraison), chauffeur
+> (CIN) — donc plus de clé de linking « N° d'Opération ».
 
 ## Concepts métier
 
@@ -11,7 +18,8 @@
 | **Zone BIC** | Région du marquage sur le conteneur (4 faces, souvent haut-droite, parfois **vertical en caractères empilés**). |
 | **Scan** | Passage d'une image dans le pipeline + validation humaine du code. Entité centrale de la V1. |
 | **Dossier de passage** | (Cible V2+) Agrégat d'un passage camion : conteneur + plaque + chauffeur + documents, constitué par linking. |
-| **N° d'Opération** | Clé métier Marsa candidate pour verrouiller le linking (question ouverte Q3). |
+| **N° d'Opération** | Clé métier Marsa candidate pour le linking — **abandonnée** : elle n'existe que sur le document papier, hors périmètre (ADR-11). |
+| **Immatriculation** | Plaque du camion, lue en vision. Format marocain `<série 1-5 chiffres> - <lettre arabe> - <région 1-2 chiffres>` (ex. `12345 - أ - 6`). Pas de clé de contrôle → validation de forme. |
 
 ## Modèle actuel (V1)
 

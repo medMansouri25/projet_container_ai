@@ -86,6 +86,28 @@ Application/dataset/ocr_container-*/
 # Rapports d entrainement char (110 Mo, derives - hors git)
 Application/reports/char/
 
+# Dataset plaque marocaine (Roboflow brut + split derive, volumineux - hors git)
+Application/dataset/plaque_immatriculation_maroc/
+Application/dataset/plaque/
+
+# Modele plaque tracke (regenere par trainImmat.bat)
+!Application/models/plaque/best_*.pt
+
+# Rapports d entrainement plaque (derives - hors git)
+Application/reports/plaque/
+
+# Exports ONNX pour le navigateur (regeneres par export_onnx.py, volumineux)
+frontend/models/*.onnx
+Application/models/**/*.onnx
+
+# Artefacts de verification front (harness dev + image d'essai du dataset)
+frontend/_verify_detect.html
+frontend/_verify_video.html
+frontend/sample_plaque.jpg
+frontend/sample_video.mp4
+
 # Bilans pour le tuteur (hors git)
 BILAN_*.md
 BILAN_Travail_*.md
+*.crdownload
+Application/dataset/

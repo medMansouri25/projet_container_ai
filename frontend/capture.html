@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capture — SmartContainer_AI</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+  <style>
+    .seg { display: inline-flex; gap: .25rem; flex-wrap: wrap; margin: .25rem 0; }
+    .seg button { padding: .4rem .8rem; border: 1px solid #ccc; background: #f6f6f6;
+                  border-radius: 6px; cursor: pointer; }
+    .seg button.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+    .stage { position: relative; margin: 1rem 0; max-width: 640px; }
+    .stage canvas { width: 100%; border-radius: 8px; background: #111; display: block; }
+    #guide { font-weight: bold; padding: .3rem .6rem; border-radius: 6px; display: inline-block; }
+    .g-aucun { background:#eee;color:#666 } .g-trop_loin,.g-trop_pres{ background:#f9e0a3;color:#7a5b00 }
+    .g-bon{ background:#c8f0c8;color:#1b6b1b }
+    .row { margin: .5rem 0; }
+    video, img#photo { display: none; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>Capture d'un passage</h1>
+    <p class="subtitle">Détection en direct dans le navigateur · lecture (OCR) sur le serveur</p>
+
+    <div id="error-alert" class="alert" hidden></div>
+
+    <div class="row"><strong>Entité :</strong>
+      <span class="seg" id="target-seg">
+        <button data-target="conteneur" class="active">Conteneur (code ISO)</button>
+        <button data-target="plaque">Plaque (immatriculation)</button>
+      </span>
+    </div>
+
+    <div class="row"><strong>Source :</strong>
+      <span class="seg" id="source-seg">
+        <button data-source="photo" class="active">Photo</button>
+        <button data-source="video">Vidéo</button>
+        <button data-source="webcam">Temps réel</button>
+      </span>
+    </div>
+
+    <div class="row" id="input-row">
+      <input type="file" id="file-photo" accept="image/*" hidden>
+      <input type="file" id="file-video" accept="video/*" hidden>
+      <button type="button" class="btn btn-secondary" id="pick-btn">Choisir un fichier</button>
+      <button type="button" class="btn btn-secondary" id="cam-start" hidden>Démarrer la caméra</button>
+      <button type="button" class="btn" id="capture-btn" hidden>Capturer</button>
+    </div>
+
+    <p class="row">État du cadrage : <span id="guide" class="g-aucun">—</span>
+       <span id="model-status" class="subtitle"></span></p>
+
+    <div class="stage">
+      <canvas id="overlay" width="640" height="480"></canvas>
+      <video id="video" muted playsinline></video>
+      <img id="photo" alt="">
+    </div>
+
+    <section id="result-section" hidden>
+      <h2>Proposition</h2>
+      <div class="badges" id="result-badges"></div>
+      <div class="row">
+        <label id="value-label">Valeur</label>
+        <input type="text" id="value-input" style="min-width:14rem">
+      </div>
+      <p class="raw" id="result-raw"></p>
+      <div class="row">
+        <button type="button" class="btn btn-primary" id="confirm-btn">Confirmer</button>
+        <button type="button" class="btn btn-secondary" id="again-btn">Recommencer</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script type="module" src="js/capture.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # DECISIONS — Architecture Decision Records (ADR)
 
-> **Dernière mise à jour** : 2026-07-16
+> **Dernière mise à jour** : 2026-07-18
 > Format : contexte → décision → conséquences. Une décision n'est modifiée que par un nouvel ADR qui la remplace.
 
 ---
@@ -59,6 +59,18 @@
 **Contexte** : projet à 74 Go (snapshots 26 Go, current 11 Go, POC, expériences).
 **Décision** : supprimer versions/, current/, raw/Fruit, TestYolo (tracké git → récupérable), exp_A/B ; conserver `raw/Conteneur`, `raw/NumeroBIC`, `dataset/char`, `datasetEnt` et **tous les best_*.pt**. `train.py` télécharge sa base automatiquement.
 **Conséquences** : −42 Go ; avant un ré-entraînement du modèle principal, régénérer `current/` via `dataset.py version`.
+
+## ADR-11 — Recentrage vision-only + service Plaque marocaine (2026-07-18)
+
+**Contexte** : le SPEC_V2 §8 postulait 4 services IA (Plaque, Container, Driver, Documents) et un linking verrouillé par le **N° d'Opération**. L'analyse du matériel terrain transmis par le tuteur (documents Marsa réels, photos/vidéos au point de contrôle) a montré que les champs Camion/CIN/N° d'Opération sont **manuscrits sur un document papier** — OCR non fiable — et que la seule entité à lecture visuelle fiable est le **conteneur** (chiffre de contrôle ISO, ADR-4). Décision produit du tuteur : **ne pas traiter les documents**, se concentrer sur la détection **immatriculation + code ISO** (icônes IMDG en perspective), **à partir de la vidéo**.
+**Décision** :
+- Périmètre **vision-only depuis vidéo/webcam** ; services retenus : **Container** (existe) + **Plaque** (construit ici) ; **Driver** et **Documents** abandonnés.
+- **Conteneur = ancre** du dossier ; la plaque est un attribut **facultatif**, liable en différé (un conteneur peut être scanné seul au sol). Cardinalité de départ : **1 camion = 1 conteneur**.
+- **Pas de moteur de tracking** : capture assistée, l'opérateur vise (repère visuel de distance) ; l'OCR ne se déclenche que sur la frame nette (principe SPEC §7 conservé, déclencheur = humain).
+- **Clé de linking N° d'Opération abandonnée** (elle vivait sur le document).
+- Service **Plaque** : YOLO11s détection zone (dataset Roboflow *moroccan-dataset*, split 70/20/10 anti-fuite) + EasyOCR arabe/anglais + **validation de forme** `<série>-<lettre>-<région>` (pas de clé de contrôle). Endpoint `POST /api/scan-plaque`.
+**Conséquences** : périmètre réduit et réaliste ; le risque bascule sur le **dataset plaque** (chemin critique, Q2) et la **lecture de la lettre arabe** (peu fiable → `?` à saisir, dont la nouvelle série **ط** absente du dataset). Le vrai « temps réel » reste borné par le VPS CPU (ADR-7) → capture assistée plutôt que 30 fps.
+**Remplace** : les hypothèses multi-services (Driver/Documents) et la stratégie de linking par clé métier du SPEC_V2 §8/§10.3.
 
 ## ADR-10 — Méthode de travail : AB Method + benchmarks avant bascule (transverse)
 

@@ -36,6 +36,7 @@ import db
 import detector
 import ocr
 import char_reader
+import plaque
 
 app = Flask(__name__)
 # Derriere le tunnel Cloudflare : respecter Host / X-Forwarded-Proto pour
@@ -181,6 +182,61 @@ def _run_scan(file, external: bool = False):
     }, None
 
 
+def _run_scan_plaque(file, external: bool = False):
+    """
+    Pipeline plaque : image → YOLO (zone plaque) → EasyOCR arabe → format
+    marocain. Miroir de _run_scan pour le service Plaque. Retourne
+    (payload, erreur). Le payload est commun HTML/JSON.
+    """
+    if not file or not file.filename:
+        return None, "Aucune image recue."
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTS:
+        return None, f"Format non supporte : {ext}"
+
+    name = f"{uuid.uuid4().hex[:12]}{ext}"
+    image_path = os.path.join(UPLOAD_FOLDER, name)
+    file.save(image_path)
+    _limit_image_size(image_path)
+
+    det = detector.detect_plaque(image_path, annotated_dir=UPLOAD_FOLDER)
+
+    def img_url(n):
+        return url_for("uploads", name=n, _external=external)
+
+    if not det["found"]:
+        # modele absent (entrainement non lance) ou aucune plaque detectee
+        reason = ("modele plaque absent : lancez trainImmat.bat"
+                  if det["model_path"] is None else "aucune plaque detectee")
+        return {"found": False, "reason": reason,
+                "image_url": img_url(name), "image_name": name}, None
+
+    extraction = plaque.extract_plaque(det["crop"])
+    annotated_name = (os.path.basename(det["annotated_path"])
+                      if det["annotated_path"] else name)
+    return {
+        "found": True,
+        "plaque": extraction["plaque"] or "",
+        "valid": extraction["valid"],
+        "left": extraction["left"],
+        "letter": extraction["letter"],
+        "right": extraction["right"],
+        "ocr_confidence": extraction["confidence"],
+        "yolo_confidence": det["confidence"],
+        "raw_text": " | ".join(extraction["raw"]),
+        "image_url": img_url(annotated_name),
+        "image_name": name,
+    }, None
+
+
+@app.route("/api/scan-plaque", methods=["POST"])
+def api_scan_plaque():
+    payload, error = _run_scan_plaque(request.files.get("image"), external=True)
+    if error:
+        return jsonify({"error": error}), 400
+    return jsonify(payload)
+
+
 @app.route("/scan", methods=["POST"])
 def scan():
     payload, error = _run_scan(request.files.get("image"))
@@ -299,6 +355,94 @@ def api_update_scan(scan_id):
         return jsonify({"error": "bic manquant"}), 400
     db.update_scan(scan_id, bic)
     return jsonify({"updated": scan_id, "bic": bic})
+
+
+# ── Dossier de passage (V2 — orchestrateur métier) ───────────────────────
+# Ces endpoints persistent des valeurs DÉJÀ confirmées par l'agent (les
+# propositions viennent de /api/scan et /api/scan-plaque). Les services IA
+# restent séparés du métier (I3 + prépare le split microservices).
+
+
+@app.route("/api/dossiers", methods=["POST"])
+def api_create_dossier():
+    """Ouvre un passage (statut en_attente). Corps : {source, voie?}."""
+    data = request.get_json(silent=True) or {}
+    db.init_dossier_db()
+    dossier_id = db.create_dossier(data.get("source"), data.get("voie"))
+    return jsonify({"id": dossier_id, "statut": "en_attente"}), 201
+
+
+@app.route("/api/dossiers/<int:dossier_id>/conteneur", methods=["POST"])
+def api_dossier_conteneur(dossier_id):
+    """Rattache le conteneur confirmé + garde la preuve brute (Detection)."""
+    data = request.get_json(silent=True) or request.form
+    code_iso = (data.get("code_iso") or "").replace(" ", "").upper()
+    if not code_iso:
+        return jsonify({"error": "code_iso manquant"}), 400
+    db.set_conteneur(dossier_id, code_iso, data.get("dimension"))
+    db.add_detection(dossier_id, "conteneur", code_iso,
+                     confidence=_as_float(data.get("ocr_confidence")),
+                     bbox=data.get("bbox"), image_path=_image_path(data.get("image_name")))
+    return jsonify({"dossier_id": dossier_id, "conteneur": code_iso})
+
+
+@app.route("/api/dossiers/<int:dossier_id>/plaque", methods=["POST"])
+def api_dossier_plaque(dossier_id):
+    """Rattache la plaque confirmée + garde la preuve brute (Detection)."""
+    data = request.get_json(silent=True) or request.form
+    immat = (data.get("immatriculation") or "").strip()
+    if not immat:
+        return jsonify({"error": "immatriculation manquante"}), 400
+    db.set_camion(dossier_id, immat)
+    db.add_detection(dossier_id, "plaque", immat,
+                     confidence=_as_float(data.get("ocr_confidence")),
+                     bbox=data.get("bbox"), image_path=_image_path(data.get("image_name")))
+    return jsonify({"dossier_id": dossier_id, "immatriculation": immat})
+
+
+@app.route("/api/dossiers/<int:dossier_id>/validate", methods=["POST"])
+def api_dossier_validate(dossier_id):
+    """Valide un dossier. 400 si vide (règle métier dans db.validate_dossier)."""
+    if not db.validate_dossier(dossier_id):
+        return jsonify({"error": "dossier vide : au moins une entité requise"}), 400
+    return jsonify({"dossier_id": dossier_id, "statut": "valide"})
+
+
+@app.route("/api/dossiers/<int:dossier_id>/abandon", methods=["POST"])
+def api_dossier_abandon(dossier_id):
+    db.abandon_dossier(dossier_id)
+    return jsonify({"dossier_id": dossier_id, "statut": "abandonne"})
+
+
+@app.route("/api/dossiers", methods=["GET"])
+def api_list_dossiers():
+    """Liste les dossiers, filtrable par ?statut= (ex. en_attente pour l'association différée)."""
+    statut = request.args.get("statut")
+    dossiers = db.list_dossiers(statut=statut, limit=100)
+    for d in dossiers:
+        for k in ("created_at", "validated_at"):
+            if d.get(k) is not None and hasattr(d[k], "isoformat"):
+                d[k] = d[k].isoformat()
+    return jsonify({"dossiers": dossiers})
+
+
+@app.route("/api/dossiers/<int:dossier_id>", methods=["GET"])
+def api_get_dossier(dossier_id):
+    dossier = db.get_dossier(dossier_id)
+    if dossier is None:
+        return jsonify({"error": "dossier introuvable"}), 404
+    for k in ("created_at", "validated_at"):
+        if dossier.get(k) is not None and hasattr(dossier[k], "isoformat"):
+            dossier[k] = dossier[k].isoformat()
+    return jsonify(dossier)
+
+
+def _as_float(v):
+    return float(v) if v not in (None, "") else None
+
+
+def _image_path(image_name):
+    return f"uploads/{image_name}" if image_name else None
 
 
 def _compute_stats(scans: list) -> dict:

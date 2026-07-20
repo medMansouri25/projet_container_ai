@@ -79,6 +79,76 @@ def _get_char_model(models_dir: str):
     return _model_cache[path]
 
 
+def _get_plaque_model(models_dir: str):
+    """Modèle de détection de la zone plaque d'immatriculation
+    (models/plaque/best_vN.pt ou env PLAQUE_MODEL_PATH). 1 classe
+    « immatriculation ». Retourne None s'il n'existe pas encore
+    (entraînement via trainImmat.bat non lancé)."""
+    path = os.environ.get("PLAQUE_MODEL_PATH")
+    if not path:
+        plaque_dir = os.path.join(models_dir, "plaque")
+        meta = os.path.join(plaque_dir, "metadata.json")
+        if os.path.exists(meta):
+            with open(meta, encoding="utf-8") as f:
+                metadata = json.load(f)
+            if metadata:
+                latest = sorted(metadata.keys())[-1]
+                path = os.path.join(plaque_dir, f"best_{latest}.pt")
+    if not path or not os.path.exists(path):
+        return None
+    if path not in _model_cache:
+        _model_cache[path] = YOLO(path)
+    return _model_cache[path]
+
+
+def detect_plaque(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
+                  conf: float = 0.25, annotated_dir: str = None) -> dict:
+    """
+    Détecte la zone de la plaque d'immatriculation la plus confiante (modèle
+    mono-classe entraîné sur le dataset marocain). Service IA autonome : entrée
+    image → crop de la zone plaque, aucune logique métier (SPEC §8).
+    Retourne {"found", "bbox", "confidence", "crop", "model_path",
+              "annotated_path"} — crop est un numpy BGR (None si rien trouvé).
+    """
+    model = _get_plaque_model(models_dir)
+    out = {"found": False, "bbox": None, "confidence": 0.0, "crop": None,
+           "model_path": None, "annotated_path": None}
+    if model is None:
+        return out
+    # modèle présent : distingue « aucune plaque » de « modèle absent » côté API
+    out["model_path"] = getattr(model, "ckpt_path", "plaque")
+
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError(f"Image illisible : {image_path}")
+
+    best_box = None
+    for result in model(image_path, conf=conf, verbose=False):
+        for box in result.boxes:
+            c = float(box.conf[0])
+            if c > out["confidence"]:
+                out["confidence"] = round(c, 4)
+                best_box = [int(v) for v in box.xyxy[0].tolist()]
+
+    if best_box:
+        x1, y1, x2, y2 = best_box
+        out["found"] = True
+        out["bbox"] = best_box
+        out["crop"] = img[max(0, y1):y2, max(0, x1):x2]
+        if annotated_dir:
+            os.makedirs(annotated_dir, exist_ok=True)
+            annotated = img.copy()
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), (155, 89, 182), 3)
+            cv2.putText(annotated, f"Plaque {out['confidence']:.0%}",
+                        (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                        (155, 89, 182), 2)
+            name = os.path.splitext(os.path.basename(image_path))[0] + "_plaque.jpg"
+            out["annotated_path"] = os.path.join(annotated_dir, name)
+            cv2.imwrite(out["annotated_path"], annotated)
+
+    return out
+
+
 def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
                      conf: float = 0.25, annotated_dir: str = None) -> dict:
     """

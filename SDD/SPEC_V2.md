@@ -492,3 +492,4 @@ Chacune de ces évolutions doit respecter les invariants (§13) et, en particuli
 4. Ne **jamais** mélanger la couche détection (générique) et la couche application (métier).
 5. **Signaler** — sans trancher seul — tout point du code qui exigerait de résoudre une **question ouverte** (§14).
 6. Distinguer en permanence `[EXIGENCE]` (contraignant) et `[HYPOTHÈSE]` (révisable) : ne pas figer une hypothèse en dur sans validation.
+7. Commente les code générer, les codes doivent etre maintenable, précis et correct en évitant les anomalies.

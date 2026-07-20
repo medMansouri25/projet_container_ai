@@ -1,6 +1,6 @@
 # PIPELINES — Flux Image / Vidéo
 
-> **Dernière mise à jour** : 2026-07-16
+> **Dernière mise à jour** : 2026-07-18
 
 ## Pipeline image (V1 — implémenté, en production)
 
@@ -34,6 +34,32 @@ Validation humaine → POST /confirm → PostgreSQL          [invariant I3]
 
 **Latence mesurée (VPS CPU)** : ~4-10 s horizontal net, ~20-40 s vertical difficile.
 Warmup au démarrage du conteneur (modèles préchargés, EasyOCR cuit dans l'image Docker).
+
+## Pipeline plaque (service Plaque — pipeline construit 2026-07-18)
+
+```
+Image (upload / capture caméra)
+  │  _limit_image_size : plafonnée à 1600 px
+  ▼
+[Étage 1] YOLO zone plaque (plaque/best_vN.pt)   → bbox plaque + crop
+  │   · None si modèle absent (trainImmat.bat non lancé) → found:false
+  ▼
+[Étage 2] EasyOCR arabe+anglais (pipeline/plaque.py)
+  │   · allowlist chiffres + lettres de catégorie ; variantes brut/CLAHE × échelles
+  │   · budget temps 12 s
+  ▼
+[Normalisation format marocain] resolve_plaque
+  │   · la lettre arabe sépare série (gauche) / région (droite)
+  │   · lettre non lue → '?' (validation de FORME, pas de clé de contrôle)
+  ▼
+Proposition à l'agent : champ pré-rempli « <série> - <lettre> - <région> »
+  ▼
+Validation humaine                                        [invariant I3]
+```
+
+Miroir du flux BIC mais **sans clé mathématique** : la plaque marocaine n'a pas
+de chiffre de contrôle → le juge de paix est la **forme**, plus faible, d'où le
+rôle accru de la validation humaine. Entrée `POST /api/scan-plaque`.
 
 ## Pipeline vidéo (V2 — cible SPEC_V2 §7, non commencé)
 

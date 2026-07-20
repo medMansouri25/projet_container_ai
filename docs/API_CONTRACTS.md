@@ -1,6 +1,6 @@
 # API_CONTRACTS — Contrats REST
 
-> **Dernière mise à jour** : 2026-07-16 · Base : `https://api.containerai-marsa-maroc.online`
+> **Dernière mise à jour** : 2026-07-18 · Base : `https://api.containerai-marsa-maroc.online`
 
 ## API actuelle (V1, implémentée dans `Application/backend/app.py`)
 
@@ -29,6 +29,50 @@ Analyse une image de conteneur. Entrée : `multipart/form-data`, champ `image` (
 }
 // 400 : { "error": "Format non supporte : .gif" }
 ```
+
+### POST /api/scan-plaque
+
+Analyse une image de camion/plaque. Entrée : `multipart/form-data`, champ `image`.
+YOLO (zone plaque `models/plaque`) → EasyOCR arabe+anglais → format marocain.
+
+```json
+// 200 — plaque détectée
+{
+  "found": true,
+  "plaque": "12345 - أ - 6",         // <serie> - <lettre> - <region>
+  "valid": true,                     // validation de FORME (pas de cle de controle)
+  "left": "12345", "letter": "أ", "right": "6",
+  "ocr_confidence": 0.83,
+  "yolo_confidence": 0.91,
+  "raw_text": "12345 | أ | 6",
+  "image_url": "https://api…/uploads/xxx_plaque.jpg",
+  "image_name": "xxx.jpg"
+}
+// 200 — rien : { "found": false, "reason": "modele plaque absent : lancez trainImmat.bat" | "aucune plaque detectee", … }
+// 400 : { "error": "Format non supporte : .gif" }
+```
+
+Lettre arabe non reconnue → `letter: "?"`, `valid: false` (à confirmer par l'agent,
+invariant I3). Aucune persistance dédiée pour l'instant (V1 = conteneur seul).
+
+### Dossier de passage (V2 — orchestrateur)
+
+Ces endpoints **persistent des valeurs déjà confirmées** par l'agent (les propositions
+viennent de `/api/scan` et `/api/scan-plaque`). Modèle symétrique (ADR-12) : 0..1
+conteneur + 0..1 camion, validable dès ≥1 entité.
+
+| Méthode / route | Rôle | Corps → réponse |
+|---|---|---|
+| `POST /api/dossiers` | ouvrir un passage | `{source, voie?}` → `201 {id, statut:"en_attente"}` |
+| `POST /api/dossiers/<id>/conteneur` | rattacher le conteneur confirmé | `{code_iso, dimension?, ocr_confidence?, bbox?, image_name?}` → `200` |
+| `POST /api/dossiers/<id>/plaque` | rattacher la plaque confirmée | `{immatriculation, ocr_confidence?, bbox?, image_name?}` → `200` |
+| `POST /api/dossiers/<id>/validate` | valider | `200 {statut:"valide"}` · **`400` si dossier vide** |
+| `POST /api/dossiers/<id>/abandon` | abandonner (soft-delete) | `200 {statut:"abandonne"}` |
+| `GET /api/dossiers?statut=en_attente` | lister (association différée) | `200 {dossiers:[…]}` |
+| `GET /api/dossiers/<id>` | dossier agrégé (conteneur+camion+détections) | `200 {…}` · `404` si inconnu |
+
+Chaque rattachement conserve aussi une **`Detection`** (preuve brute IA horodatée).
+« Rouvrir/compléter » un `en_attente` = rappeler `/conteneur` ou `/plaque` puis `/validate`.
 
 ### POST /api/confirm
 
@@ -76,6 +120,6 @@ service IA ; l'interface est **stable** même si le modèle interne change.
 | Service | Statut | result attendu |
 |---|---|---|
 | API Container | ✅ existe (intégré au monolithe, à extraire) | code BIC + validité ISO |
-| API Plaque | à créer (Q2 : dataset plaques marocaines) | matricule |
-| API Driver | à créer | identifiant CIN/permis |
-| API Documents | à créer (Q6 : manuscrit hors OCR auto) | champs DUM/booking… |
+| API Plaque | ✅ pipeline construit (`/api/scan-plaque`), modèle à entraîner | matricule (format marocain) |
+| API Icônes IMDG | perspective | pictogramme danger |
+| ~~API Driver~~ / ~~API Documents~~ | **hors périmètre** (ADR-11) | — |

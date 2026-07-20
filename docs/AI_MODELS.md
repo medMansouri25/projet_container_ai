@@ -1,6 +1,6 @@
 # AI_MODELS — Modèles IA
 
-> **Dernière mise à jour** : 2026-07-16
+> **Dernière mise à jour** : 2026-07-18
 
 ## Convention de versionnement (commune à tous les modèles)
 
@@ -56,7 +56,24 @@ un fine-tuning BIC-only aurait effacé Conteneur/Fruit (oubli catastrophique dé
 char rétrogradé en secours. Cause : pas de données *conteneurs* annotées caractère.
 **Amélioration identifiée** : annoter `datasetEnt` au niveau caractère.
 
-### 4. EasyOCR (moteur principal de lecture)
+### 4. Détecteur de plaque — `models/plaque/best_vN.pt` (pipeline prêt, à entraîner)
+
+| | |
+|---|---|
+| Base | **YOLO11s**, 1 classe (`immatriculation`) |
+| Données | Roboflow *moroccan-dataset* — 7041 img → **4646 sources** distinctes, split 70/20/10 (anti-fuite par source) |
+| Rôle | Étage 1 du service Plaque : localiser la zone plaque (crop) |
+| Lecture | EasyOCR **arabe+anglais** + normalisation format marocain (`pipeline/plaque.py`) |
+| Entraînement | **`trainImmat.bat`** · préparation : `Application/ml/prepare_plaque_dataset.py` |
+| Override env | `PLAQUE_MODEL_PATH` |
+
+**Format marocain** : `<série 1-5 chiffres> - <lettre arabe> - <région 1-2 chiffres>`
+(ex. `12345 - أ - 6`). **Pas de clé de contrôle** (contrairement au BIC) → la
+« validité » est une validation de **forme**, jamais une preuve ; la lettre arabe
+non reconnue est laissée à `?` pour saisie humaine. La lettre **ط** (nouvelles
+séries) est gérée mais **manque dans le dataset** → généralisation à surveiller (Q2).
+
+### 5. EasyOCR (moteur principal de lecture)
 
 Pas un modèle entraîné par nous — bibliothèque durcie par ~600 lignes de logique :
 orientation par caractères, masque HSV adaptatif, lecteur de colonnes empilées,
@@ -69,10 +86,11 @@ normalisation par position, scoring, **validation/réparation/solveur ISO 6346**
 - `exp_A`/`exp_B` (expérience équilibrage) — purgés (2026-07-15), conclusions dans ADR-2
 - POC TestYolo (yolo11m COCO + EasyOCR brut) — supprimé du dépôt (récupérable dans l'historique git)
 
-## Modèles cibles (SPEC_V2, à créer)
+## Modèles cibles
 
-| Service | Modèle pressenti | Blocage |
+| Service | Modèle pressenti | Statut |
 |---|---|---|
-| API Plaque | YOLO11s détection + lecture (nouveau format marocain) | dataset (Q2) |
-| API Driver | détection CIN/permis + OCR champs | dataset |
-| API Documents | extraction de champs (DUM, booking) | manuscrit = Q6 |
+| API Plaque | YOLO11s détection + EasyOCR ar/en + format marocain | **pipeline construit** (2026-07-18), à entraîner (`trainImmat.bat`) |
+| API Icônes IMDG | YOLO détection pictogrammes danger | perspective (même contrat) |
+| ~~API Driver~~ (CIN/permis) | — | **hors périmètre** (recentrage vision-only, cf. ADR-11) |
+| ~~API Documents~~ (DUM/booking) | — | **hors périmètre** (recentrage vision-only, cf. ADR-11) |
