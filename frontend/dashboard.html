@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard — SmartContainer AI</title>
   <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/i18n.js"></script>
 </head>
 <body>
   <nav>
@@ -12,13 +13,18 @@
       <svg class="icon icon-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6.5"/><path d="M10 6v4"/><path d="M14 6v4"/><path d="M2 12.5h20l-1.5 6a2 2 0 0 1-2 1.5h-13a2 2 0 0 1-2-1.5z"/></svg>
       SmartContainer AI
     </span>
-    <a href="index.html">Scanner</a>
-    <a href="history.html">Historique</a>
-    <a href="dashboard.html">Dashboard</a>
+    <a href="index.html" data-i18n="nav.scan">Scanner BIC</a>
+    <a href="capture.html" data-i18n="nav.capture">Capture passage</a>
+    <a href="history.html" data-i18n="nav.history">Historique</a>
+    <a href="dashboard.html" data-i18n="nav.dashboard">Dashboard</a>
+    <select id="lang-select" class="lang-select" aria-label="Langue / اللغة">
+      <option value="fr">FR</option>
+      <option value="ar">ع</option>
+    </select>
   </nav>
 
   <main class="wide">
-    <h1>Dashboard</h1>
+    <h1 data-i18n="dashboard.title">Dashboard</h1>
     <p class="subtitle">Vue d'ensemble des scans de conteneurs</p>
     <div id="error-alert" class="alert" hidden></div>
 

@@ -368,3 +368,67 @@ main.wide { max-width: 1180px; }
   .kpi-grid { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
   .hbar-code { width: 2.9rem; font-size: 0.85rem; }
 }
+
+/* ── i18n / RTL (arabe) ─────────────────────────────────────────────── */
+.lang-select { margin-inline-start: auto; padding: .2rem .4rem; border-radius: 6px;
+               border: 1px solid #ccc; background: #fff; cursor: pointer; }
+html[dir="rtl"] body { direction: rtl; }
+html[dir="rtl"] .subtitle,
+html[dir="rtl"] main,
+html[dir="rtl"] h1,
+html[dir="rtl"] h2,
+html[dir="rtl"] p,
+html[dir="rtl"] label { text-align: right; }
+html[dir="rtl"] .mode-card,
+html[dir="rtl"] .badges { text-align: center; }
+
+/* ── Accessibilité globale ──────────────────────────────────────────── */
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+           overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+nav a[aria-current="page"] { color: var(--primary); font-weight: 700; }
+
+/* ── Capture — design professionnel ─────────────────────────────────── */
+.hero { display:flex; align-items:flex-start; gap:.9rem; margin-bottom:1.4rem; }
+.hero .hero-ico { width:38px; height:38px; color:var(--primary); flex-shrink:0; margin-top:.15rem; }
+.card { background:var(--card); border:1px solid #e2e8f0; border-radius:14px;
+        padding:1.3rem 1.4rem; box-shadow:0 1px 3px rgba(0,0,0,.06); margin-bottom:1.1rem; }
+.step-head { display:flex; align-items:center; gap:.6rem; margin-bottom:.9rem; }
+.step-num { width:26px; height:26px; border-radius:50%; background:var(--primary); color:#fff;
+            font-weight:700; font-size:.85rem; display:inline-flex; align-items:center;
+            justify-content:center; flex-shrink:0; }
+.step-head h2 { font-size:1.05rem; margin:0; }
+
+.option-group { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+.option { display:flex; align-items:center; gap:.7rem; padding:.9rem 1rem; border:2px solid #e2e8f0;
+          border-radius:12px; background:#fff; cursor:pointer; font-size:.98rem; font-weight:600;
+          color:var(--text); text-align:start; }
+.option .icon { width:22px; height:22px; color:var(--muted); }
+.option:hover { border-color:#c7d2fe; }
+.option[aria-pressed="true"] { border-color:var(--primary); background:#eff6ff; }
+.option[aria-pressed="true"] .icon { color:var(--primary); }
+
+.modes { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
+.mode-card { display:flex; flex-direction:column; align-items:center; gap:.5rem; padding:1.4rem 1rem;
+             border:2px solid #e2e8f0; border-radius:14px; background:#fff; cursor:pointer;
+             text-align:center; color:var(--text); font:inherit; }
+.mode-card:hover { border-color:var(--primary); box-shadow:0 6px 16px rgba(37,99,235,.12); }
+.mode-card .m-ico { width:34px; height:34px; color:var(--primary); }
+.mode-card .m-t { font-weight:700; font-size:1rem; }
+.mode-card .m-d { font-size:.82rem; color:var(--muted); line-height:1.4; }
+
+.stage { position:relative; margin:0 0 1rem; }
+.stage canvas { width:100%; max-width:640px; border-radius:14px; background:#0f172a;
+                display:block; box-shadow:0 4px 16px rgba(0,0,0,.14); }
+.guide-bar { display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; margin-bottom:.8rem; }
+.guide { display:inline-flex; align-items:center; gap:.4rem; font-weight:700; padding:.35rem .8rem;
+         border-radius:999px; font-size:.9rem; }
+.g-aucun { background:#f1f5f9; color:var(--muted); }
+.g-trop_loin, .g-trop_pres { background:#fef3c7; color:var(--warn); }
+.g-bon { background:#dcfce7; color:var(--ok); }
+.value-input { width:100%; max-width:22rem; font-size:1.3rem; font-family:'Consolas',monospace;
+               letter-spacing:1px; padding:.6rem .9rem; border:2px solid #cbd5e1; border-radius:8px; }
+.value-input:focus { border-color:var(--primary); outline:none; }
+
+@media (max-width:560px){ .option-group, .modes { grid-template-columns:1fr; } }
+html[dir="rtl"] .option, html[dir="rtl"] .step-head, html[dir="rtl"] .hero { text-align:right; }

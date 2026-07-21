@@ -3,73 +3,107 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Capture — SmartContainer_AI</title>
+  <title>Capture — SmartContainer AI</title>
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
-  <style>
-    .seg { display: inline-flex; gap: .25rem; flex-wrap: wrap; margin: .25rem 0; }
-    .seg button { padding: .4rem .8rem; border: 1px solid #ccc; background: #f6f6f6;
-                  border-radius: 6px; cursor: pointer; }
-    .seg button.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
-    .stage { position: relative; margin: 1rem 0; max-width: 640px; }
-    .stage canvas { width: 100%; border-radius: 8px; background: #111; display: block; }
-    #guide { font-weight: bold; padding: .3rem .6rem; border-radius: 6px; display: inline-block; }
-    .g-aucun { background:#eee;color:#666 } .g-trop_loin,.g-trop_pres{ background:#f9e0a3;color:#7a5b00 }
-    .g-bon{ background:#c8f0c8;color:#1b6b1b }
-    .row { margin: .5rem 0; }
-    video, img#photo { display: none; }
-  </style>
+  <script type="module" src="js/i18n.js"></script>
 </head>
 <body>
-  <main class="container">
-    <h1>Capture d'un passage</h1>
-    <p class="subtitle">Détection en direct dans le navigateur · lecture (OCR) sur le serveur</p>
+  <nav>
+    <span class="brand">
+      <svg class="icon icon-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6.5"/><path d="M10 6v4"/><path d="M14 6v4"/><path d="M2 12.5h20l-1.5 6a2 2 0 0 1-2 1.5h-13a2 2 0 0 1-2-1.5z"/></svg>
+      SmartContainer AI
+    </span>
+    <a href="index.html" data-i18n="nav.scan">Scanner BIC</a>
+    <a href="capture.html" data-i18n="nav.capture" aria-current="page">Capture passage</a>
+    <a href="history.html" data-i18n="nav.history">Historique</a>
+    <a href="dashboard.html" data-i18n="nav.dashboard">Dashboard</a>
+    <label class="sr-only" for="lang-select">Langue / اللغة</label>
+    <select id="lang-select" class="lang-select">
+      <option value="fr">FR</option>
+      <option value="ar">ع</option>
+    </select>
+  </nav>
 
-    <div id="error-alert" class="alert" hidden></div>
-
-    <div class="row"><strong>Entité :</strong>
-      <span class="seg" id="target-seg">
-        <button data-target="conteneur" class="active">Conteneur (code ISO)</button>
-        <button data-target="plaque">Plaque (immatriculation)</button>
-      </span>
-    </div>
-
-    <div class="row"><strong>Source :</strong>
-      <span class="seg" id="source-seg">
-        <button data-source="photo" class="active">Photo</button>
-        <button data-source="video">Vidéo</button>
-        <button data-source="webcam">Temps réel</button>
-      </span>
-    </div>
-
-    <div class="row" id="input-row">
-      <input type="file" id="file-photo" accept="image/*" hidden>
-      <input type="file" id="file-video" accept="video/*" hidden>
-      <button type="button" class="btn btn-secondary" id="pick-btn">Choisir un fichier</button>
-      <button type="button" class="btn btn-secondary" id="cam-start" hidden>Démarrer la caméra</button>
-      <button type="button" class="btn" id="capture-btn" hidden>Capturer</button>
-    </div>
-
-    <p class="row">État du cadrage : <span id="guide" class="g-aucun">—</span>
-       <span id="model-status" class="subtitle"></span></p>
-
-    <div class="stage">
-      <canvas id="overlay" width="640" height="480"></canvas>
-      <video id="video" muted playsinline></video>
-      <img id="photo" alt="">
-    </div>
-
-    <section id="result-section" hidden>
-      <h2>Proposition</h2>
-      <div class="badges" id="result-badges"></div>
-      <div class="row">
-        <label id="value-label">Valeur</label>
-        <input type="text" id="value-input" style="min-width:14rem">
+  <main>
+    <div class="hero">
+      <svg class="hero-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+      <div>
+        <h1 data-i18n="cap.title">Scanner un passage</h1>
+        <p class="subtitle" data-i18n-html="cap.subtitle">Détecte le <b>conteneur</b> (code ISO) ou la <b>plaque</b> — depuis une image, une vidéo, ou en direct à la caméra.</p>
       </div>
+    </div>
+
+    <div id="error-alert" class="alert" role="alert" hidden></div>
+
+    <!-- Étape 1 : quoi détecter -->
+    <section class="card">
+      <div class="step-head"><span class="step-num">1</span><h2 data-i18n="cap.step1">Que veux-tu détecter ?</h2></div>
+      <div class="option-group" id="target-seg" role="group" aria-label="Entité à détecter">
+        <button type="button" class="option" data-target="conteneur" aria-pressed="true">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
+          <span data-i18n="cap.entity.conteneur">Conteneur (code ISO)</span>
+        </button>
+        <button type="button" class="option" data-target="plaque" aria-pressed="false">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+          <span data-i18n="cap.entity.plaque">Plaque (immatriculation)</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Étape 2 : comment -->
+    <section class="card">
+      <div class="step-head"><span class="step-num">2</span><h2 data-i18n="cap.step2">Comment ?</h2></div>
+      <div class="modes">
+        <button type="button" class="mode-card" id="mode-import">
+          <svg class="m-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+          <span class="m-t" data-i18n="cap.import.t">Importer un fichier</span>
+          <span class="m-d" data-i18n="cap.import.d">une image ou une vidéo depuis l'appareil</span>
+        </button>
+        <button type="button" class="mode-card" id="mode-realtime">
+          <svg class="m-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+          <span class="m-t" data-i18n="cap.realtime.t">Détection temps réel</span>
+          <span class="m-d" data-i18n="cap.realtime.d">caméra en direct + repère de cadrage</span>
+        </button>
+      </div>
+      <input type="file" id="file-input" accept="image/*,video/*" hidden>
+    </section>
+
+    <!-- Zone de travail -->
+    <section class="card" id="action-row" hidden>
+      <div class="guide-bar">
+        <span data-i18n="cap.framing">État du cadrage :</span>
+        <span id="guide" class="guide g-aucun" aria-live="polite">—</span>
+        <span id="model-status" class="subtitle" style="margin:0"></span>
+      </div>
+      <div class="stage">
+        <canvas id="overlay" width="640" height="480" role="img" aria-label="Aperçu de détection"></canvas>
+        <video id="video" muted playsinline></video>
+        <img id="photo" alt="">
+      </div>
+      <button type="button" class="btn btn-primary" id="capture-btn" hidden>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+        <span data-i18n="cap.capture">Capturer cette image</span>
+      </button>
+      <button type="button" class="btn btn-secondary" id="stop-btn" data-i18n="cap.stop" hidden>Arrêter</button>
+    </section>
+
+    <!-- Proposition -->
+    <section class="card" id="result-section" hidden>
+      <h2 data-i18n="cap.result.title">Proposition (à valider)</h2>
+      <div class="badges" id="result-badges"></div>
+      <label id="value-label" for="value-input" style="display:block;font-weight:600;margin:.6rem 0 .4rem">Valeur</label>
+      <input type="text" id="value-input" class="value-input">
       <p class="raw" id="result-raw"></p>
-      <div class="row">
-        <button type="button" class="btn btn-primary" id="confirm-btn">Confirmer</button>
-        <button type="button" class="btn btn-secondary" id="again-btn">Recommencer</button>
+      <div style="margin-top:1rem">
+        <button type="button" class="btn btn-primary" id="confirm-btn">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.8 10A10 10 0 1 1 17 3.3"/><path d="m9 11 3 3L22 4"/></svg>
+          <span data-i18n="cap.confirm">Confirmer</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="again-btn">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          <span data-i18n="cap.again">Recommencer</span>
+        </button>
       </div>
     </section>
   </main>
