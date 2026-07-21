@@ -81,14 +81,26 @@
         <video id="video" muted playsinline></video>
         <img id="photo" alt="">
       </div>
-      <button type="button" class="btn btn-primary" id="capture-btn" hidden>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
-        <span data-i18n="cap.capture">Capturer cette image</span>
-      </button>
-      <button type="button" class="btn btn-secondary" id="stop-btn" data-i18n="cap.stop" hidden>Arrêter</button>
+      <div class="action-btns">
+        <button type="button" class="btn btn-primary" id="capture-btn" hidden>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+          <span id="capture-btn-label" data-i18n="cap.capture">Capturer cette image</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="stop-btn" data-i18n="cap.stop" hidden>Arrêter</button>
+      </div>
     </section>
 
-    <!-- Proposition -->
+    <!-- Log de détections continues (mode caméra temps réel) -->
+    <section class="card" id="detection-log" hidden>
+      <div class="log-header">
+        <h2>Détections en cours</h2>
+        <span id="det-count" class="badge badge-ok">0</span>
+        <span id="ocr-status" class="subtitle" style="margin-left:auto"></span>
+      </div>
+      <div id="log-list" class="log-list"></div>
+    </section>
+
+    <!-- Proposition (fichier importé ou dernière détection caméra) -->
     <section class="card" id="result-section" hidden>
       <h2 data-i18n="cap.result.title">Proposition (à valider)</h2>
       <div class="badges" id="result-badges"></div>

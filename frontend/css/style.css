@@ -432,5 +432,43 @@ nav a[aria-current="page"] { color: var(--primary); font-weight: 700; }
                letter-spacing:1px; padding:.6rem .9rem; border:2px solid #cbd5e1; border-radius:8px; }
 .value-input:focus { border-color:var(--primary); outline:none; }
 
-@media (max-width:560px){ .option-group, .modes { grid-template-columns:1fr; } }
+/* Boutons action alignés */
+.action-btns { display:flex; gap:.7rem; flex-wrap:wrap; margin-top:.5rem; }
+
+/* ── Log de détections ANPR continu ─────────────────────────────────── */
+.log-header {
+  display:flex; align-items:center; gap:.7rem; margin-bottom:.8rem; flex-wrap:wrap;
+}
+.log-header h2 { margin:0; font-size:1.05rem; }
+
+.log-list {
+  display:flex; flex-direction:column; gap:.45rem;
+  max-height:320px; overflow-y:auto;
+  padding-right:.2rem;
+}
+
+.det-card {
+  display:flex; align-items:center; gap:.65rem; flex-wrap:wrap;
+  padding:.55rem .8rem; border-radius:10px; border:1.5px solid #e2e8f0;
+  background:#f8fafc; transition:border-color .2s;
+}
+.det-card.det-ok   { border-color:#86efac; background:#f0fdf4; }
+.det-card.det-warn { border-color:#fcd34d; background:#fffbeb; }
+
+.det-time   { font-size:.76rem; color:var(--muted); white-space:nowrap; flex-shrink:0; }
+.det-val    { font-family:'Consolas',monospace; font-weight:700; font-size:1.05rem; flex:1; }
+.det-badges { display:flex; gap:.3rem; flex-shrink:0; }
+
+.btn-sm {
+  padding:.28rem .65rem; font-size:.8rem; border-radius:6px;
+  background:var(--primary); color:#fff; border:none; cursor:pointer;
+  font-weight:600; flex-shrink:0;
+}
+.btn-sm:hover { background:var(--primary-dark); }
+
+@media (max-width:560px){
+  .option-group, .modes { grid-template-columns:1fr; }
+  .det-card { flex-wrap:wrap; }
+  .det-val  { font-size:.95rem; }
+}
 html[dir="rtl"] .option, html[dir="rtl"] .step-head, html[dir="rtl"] .hero { text-align:right; }
