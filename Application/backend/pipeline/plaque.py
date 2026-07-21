@@ -67,9 +67,16 @@ def _find_letter(text: str):
 def resolve_plaque(texts) -> dict:
     """
     Assemble et normalise une plaque marocaine à partir de fragments OCR.
-    La lettre arabe sert de séparateur naturel entre la série (gauche) et le
-    code région (droite). Si aucune lettre n'est lue, on retombe sur deux
-    groupes de chiffres et la lettre passe à « ? ».
+
+    Les fragments sont supposés triés gauche→droite par X (fait dans
+    extract_plaque avant l'appel). On identifie le fragment lettre par
+    priorité : lettre arabe connue non-alif > alif > toute lettre arabe.
+    Les barres verticales de la plaque sont souvent lues comme ا (alif) :
+    on les déprioritise pour que la vraie lettre de catégorie (ب ج ط …)
+    l'emporte même quand elle est dans le même token.
+
+    Les fragments situés avant le fragment lettre donnent la série (gauche),
+    ceux situés après donnent le code région (droite).
 
     Retourne {"plaque", "valid", "left", "letter", "right", "raw"} où
     "plaque" suit la forme « <série> - <lettre> - <région> » (ou None si
@@ -82,17 +89,40 @@ def resolve_plaque(texts) -> dict:
     left = right = ""
     letter = _UNKNOWN_LETTER
 
-    ar_char, idx = _find_letter(joined)
-    if ar_char is not None and idx >= 0:
-        # la lettre découpe naturellement série (gauche) / région (droite)
-        left = re.sub(r"\D", "", joined[:idx])
-        right = re.sub(r"\D", "", joined[idx + 1:])
-        letter = ar_char if ar_char in MOROCCAN_LETTERS else _UNKNOWN_LETTER
+    # --- Approche fragment-aware (textes X-sortés = ordre spatial LTR) ----
+    # Priorités : 1 = lettre connue non-alif, 2 = alif/variante, 3 = non trouvée
+    letter_frag_idx = -1
+    best_prio = 3
+
+    for i, frag in enumerate(cleaned):
+        ar_chars = [ch for ch in frag if "؀" <= ch <= "ۿ"]
+        for ch in ar_chars:
+            if ch in MOROCCAN_LETTERS:
+                prio = 2 if ch in {"ا", "أ", "إ", "آ"} else 1
+                if prio < best_prio:
+                    best_prio = prio
+                    letter = ch
+                    letter_frag_idx = i
+                if best_prio == 1:
+                    break   # lettre connue non-alif : impossible de faire mieux
+
+    # Fallback : n'importe quel caractère arabe si aucune lettre connue trouvée
+    if letter_frag_idx < 0:
+        for i, frag in enumerate(cleaned):
+            for ch in frag:
+                if "؀" <= ch <= "ۿ":
+                    letter_frag_idx = i
+                    break
+            if letter_frag_idx >= 0:
+                break
+
+    if letter_frag_idx >= 0:
+        # Série = chiffres de tous les fragments AVANT le fragment lettre
+        left = "".join(re.sub(r"\D", "", f) for f in cleaned[:letter_frag_idx])
+        # Région = chiffres de tous les fragments APRÈS le fragment lettre
+        right = "".join(re.sub(r"\D", "", f) for f in cleaned[letter_frag_idx + 1:])
     else:
-        # pas de lettre lue : la lettre ne peut plus servir de séparateur.
-        # On s'appuie sur les FRONTIÈRES de fragments OCR (le « joined » les
-        # aurait fusionnés en un seul groupe de chiffres) : premier = série,
-        # dernier = région.
+        # Pas de lettre lue : premier fragment chiffres = série, dernier = région
         digit_frags = [f for f in cleaned if f.isdigit()]
         if len(digit_frags) >= 2:
             left, right = digit_frags[0], digit_frags[-1]

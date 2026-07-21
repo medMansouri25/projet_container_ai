@@ -421,7 +421,7 @@ def _crop_bic_zone_only(image):
         # La dernière bande est présumée être le code taille.
         # On coupe 6 px au-dessus de son début (marges de sécurité).
         cut_y = max(bands[-1][0] - 6, 0)
-        if cut_y >= int(0.45 * H):      # garde au moins 45 % : sanité
+        if cut_y >= int(0.35 * H):      # garde au moins 35 % : sanité
             return image[:cut_y, :]
 
     return image   # pas de gap net : on ne touche pas au crop
@@ -601,6 +601,12 @@ def extract_bic(image, vertical: bool = False, reader=None,
         bic, (sc, n, conf, raw, corr) = min(
             repaired_votes.items(),
             key=lambda kv: (kv[1][0], -kv[1][1], -kv[1][2]))
+        # Score > 8 : le préfixe a nécessité 4+ substitutions (toutes les
+        # lettres lues comme des chiffres) → le modèle YOLO a probablement
+        # détecté la mauvaise zone (stickers de poids, étiquettes ISO…).
+        # On préfère retourner None plutôt qu'un BIC fabriqué de toutes pièces.
+        if sc > 8:
+            return best   # best["bic"] est None
         # un candidat au score eleve reste douteux meme si le calcul passe :
         # on force le badge "verifiez le code"
         best.update({"bic": bic, "valid": True,
