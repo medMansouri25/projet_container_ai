@@ -383,6 +383,50 @@ def _white_text_mask(image):
     return cv2.morphologyEx(bw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
 
 
+def _crop_bic_zone_only(image):
+    """
+    Élimine le code taille ISO (ex. '45G1') du crop de zone BIC.
+    Le marquage BIC (EISU + série + chiffre de contrôle) occupe la PARTIE
+    HAUTE de la zone détectée ; le code taille '45G1' / '22G1' est TOUJOURS
+    EN DESSOUS, souvent à 65-80 % de la hauteur.
+
+    Méthode : projection horizontale des pixels blancs → détection des bandes
+    de texte → s'il y a au moins 2 bandes et un gap clair, on coupe juste
+    avant la dernière bande (le code taille). Sans gap clair, retourne
+    l'image originale (pas de modification).
+
+    Pourquoi nécessaire : même à 3 % de marge basse, si la boîte YOLO inclut
+    déjà '45G1', EasyOCR fusionne les caractères des deux lignes en tokens
+    composites ('9'+'4'→'94', '1'+'5'→'15') que le filtre post-OCR ne peut
+    pas corriger.
+    """
+    import numpy as np
+    bw = _white_text_mask(image)
+    H, W = bw.shape
+    row_sum = bw.sum(axis=1) / 255      # nbre de pixels blancs par ligne
+
+    thr = max(3, 0.03 * W)
+    bands, in_text, start = [], False, 0
+    for y in range(H):
+        if row_sum[y] > thr:
+            if not in_text:
+                start, in_text = y, True
+        elif in_text:
+            bands.append((start, y))
+            in_text = False
+    if in_text:
+        bands.append((start, H))
+
+    if len(bands) >= 2:
+        # La dernière bande est présumée être le code taille.
+        # On coupe 6 px au-dessus de son début (marges de sécurité).
+        cut_y = max(bands[-1][0] - 6, 0)
+        if cut_y >= int(0.45 * H):      # garde au moins 45 % : sanité
+            return image[:cut_y, :]
+
+    return image   # pas de gap net : on ne touche pas au crop
+
+
 def _detect_text_orientation(image):
     """
     Détermine l'orientation du TEXTE dans un crop (pas celle de la boîte :
@@ -450,6 +494,13 @@ def extract_bic(image, vertical: bool = False, reader=None,
 
     if reader is None:
         reader = _get_reader()
+
+    # Quand le crop est déjà la zone BIC localisée, supprimer la ligne du
+    # code taille ISO (45G1, 22G1…) qui apparaît en dessous du marquage.
+    # EasyOCR fusionne les caractères des deux lignes en tokens composites
+    # (9+4→"94", 1+5→"15") impossibles à corriger par le filtre post-OCR.
+    if is_zone:
+        image = _crop_bic_zone_only(image)
 
     # La forme de la boite ment souvent (marquage horizontal sur 2 lignes =
     # boite haute) : on tranche avec l'orientation reelle des caracteres
