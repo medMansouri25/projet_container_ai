@@ -60,12 +60,23 @@ echo ============================================================
 echo   ETAPE 2/3 : ENTRAINEMENT ( %EPOCHS% epochs, base %BASE% )
 echo ============================================================
 echo.
-%PY% Application\ml\train.py ^
-    --dataset "%DATASET%" ^
-    --models  "%MODELS%"  ^
-    --reports "%REPORTS%" ^
-    --base-model "%BASE%" ^
-    --epochs %EPOCHS%
+if "%BROWSER_MODE%"=="1" (
+    %PY% Application\ml\train.py ^
+        --dataset "%DATASET%" ^
+        --models  "%MODELS%"  ^
+        --reports "%REPORTS%" ^
+        --base-model "%BASE%" ^
+        --epochs %EPOCHS%     ^
+        --export-onnx         ^
+        --onnx-out "%~dp0frontend\models\plaque.onnx"
+) else (
+    %PY% Application\ml\train.py ^
+        --dataset "%DATASET%" ^
+        --models  "%MODELS%"  ^
+        --reports "%REPORTS%" ^
+        --base-model "%BASE%" ^
+        --epochs %EPOCHS%
+)
 if errorlevel 1 (
     echo [ERREUR] Entrainement echoue.
     pause & exit /b 1
@@ -86,22 +97,7 @@ if errorlevel 1 (
     pause & exit /b 1
 )
 
-REM --- Export ONNX automatique en mode browser ---
-if "%BROWSER_MODE%"=="1" (
-    echo.
-    echo ============================================================
-    echo   ETAPE 4/4 : EXPORT ONNX -> frontend/models/plaque.onnx
-    echo ============================================================
-    echo.
-    %PY% Application\ml\export_onnx.py --target plaque_browser
-    if errorlevel 1 (
-        echo [ERREUR] Export ONNX echoue.
-        pause & exit /b 1
-    )
-    echo.
-    echo   frontend/models/plaque.onnx mis a jour.
-    echo   Lance : git add frontend/models/plaque.onnx ^&^& git push
-)
+REM (export ONNX deja fait par train.py --export-onnx en mode browser)
 
 echo.
 echo ============================================================

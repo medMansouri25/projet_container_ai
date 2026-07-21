@@ -22,7 +22,7 @@ from ultralytics import YOLO
 
 # nom simple : ultralytics telecharge automatiquement le modele de base
 # s'il est absent (plus de dependance au dossier TestYolo supprime)
-DEFAULT_BASE_MODEL = "yolo11m.pt"
+DEFAULT_BASE_MODEL = "yolo11s.pt"
 DEFAULT_DATASET_DIR = os.path.join(os.path.dirname(__file__), "..", "dataset")
 DEFAULT_MODELS_DIR  = os.path.join(os.path.dirname(__file__), "..", "models")
 DEFAULT_REPORTS_DIR = os.path.join(os.path.dirname(__file__), "..", "reports")
@@ -128,15 +128,17 @@ def train(
     reports_dir: str = DEFAULT_REPORTS_DIR,
     base_model: str = DEFAULT_BASE_MODEL,
     epochs: int = 20,
-    patience: int = 10,
+    patience: int = 20,
     device: int = 0,
     tune: bool = False,
     tune_iterations: int = 30,
     tune_epochs: int = 13,
+    export_onnx: bool = False,
+    onnx_out: str | None = None,
 ) -> dict:
     """
-    Lance le fine-tuning YOLO11m de façon incrémentale.
-    Repart depuis le dernier best_vN.pt (ou yolo11m.pt pour v1).
+    Lance le fine-tuning YOLO11s de façon incrémentale.
+    Repart depuis le dernier best_vN.pt (ou yolo11s.pt pour v1).
     Sauvegarde models/best_vN.pt, met à jour metadata.json, crée reports/run_NNN/.
     Retourne {"version", "model_path", "mAP50", "mAP50_95", "precision", "recall", "run"}.
     """
@@ -158,7 +160,7 @@ def train(
             iterations=tune_iterations,
             epochs=tune_epochs,
             device=device,
-            plots=False,
+            plots=True,
             save=False,
             val=False,
         )
@@ -171,10 +173,15 @@ def train(
         name="train",
         device=device,
         exist_ok=True,
-        workers=2,       # parallélisme réduit : workers=8 a produit un deadlock Windows (epoch 31/40)
-        cache=True,      # images en RAM après la 1re epoch (plus de lecture disque)
-        batch=-1,        # auto : utilise le max de VRAM disponible
-        cos_lr=True,     # learning rate cosinus : descente douce, meilleur final
+        workers=2,            # workers=8 a produit un deadlock Windows (epoch 31/40)
+        cache="ram",          # images en RAM dès la 1re epoch
+        batch=-1,             # auto : max de VRAM disponible
+        cos_lr=True,          # descente cosinus : meilleur final
+        amp=True,             # mixed precision FP16 : ~30% plus rapide sur RTX
+        optimizer="AdamW",    # plus stable que SGD sur petits datasets
+        seed=42,              # runs reproductibles
+        deterministic=True,   # même résultat à chaque lancement
+        plots=True,
     )
 
     # Copie best.pt → models/best_vN.pt (YOLO le sauvegarde dans weights/)
@@ -195,6 +202,24 @@ def train(
     }
 
     _write_run_report(out, run_dir)
+
+    # Export ONNX optionnel (--export-onnx) : FP32 uniquement (FP16 non
+    # supporté par onnxruntime-web WASM → crash navigateur)
+    if export_onnx:
+        import shutil as _sh
+        onnx_src = model.export(format="onnx", imgsz=640, opset=12,
+                                simplify=True, dynamic=False)
+        dst = onnx_out or os.path.join(
+            os.path.dirname(best_dst), "..", "..", "..",
+            "frontend", "models",
+            os.path.basename(os.path.dirname(models_dir)) + ".onnx",
+        )
+        dst = os.path.abspath(dst)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        _sh.copy2(onnx_src, dst)
+        mb = os.path.getsize(dst) / 1024 / 1024
+        out["onnx_path"] = dst
+        print(f"ONNX exporté : {dst} ({mb:.0f} Mo)")
 
     # Met à jour metadata.json
     metadata = _load_json(os.path.join(models_dir, "metadata.json"), {})
@@ -219,7 +244,7 @@ def train(
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fine-tuning incrémental YOLO11m")
+    parser = argparse.ArgumentParser(description="Fine-tuning incrémental YOLO11s")
     parser.add_argument("--dataset",  default=DEFAULT_DATASET_DIR)
     parser.add_argument("--models",   default=DEFAULT_MODELS_DIR)
     parser.add_argument("--reports",  default=DEFAULT_REPORTS_DIR)
@@ -230,6 +255,10 @@ if __name__ == "__main__":
     parser.add_argument("--tune",     action="store_true")
     parser.add_argument("--tune-iterations", type=int, default=30)
     parser.add_argument("--tune-epochs",     type=int, default=13)
+    parser.add_argument("--export-onnx", action="store_true",
+                        help="exporte best.pt en ONNX FP32 apres entrainement")
+    parser.add_argument("--onnx-out", default=None,
+                        help="chemin de destination du .onnx (defaut : frontend/models/)")
     args = parser.parse_args()
 
     print(f"Mode : {'optimisation (tune)' if args.tune else 'normal'}")
@@ -244,6 +273,8 @@ if __name__ == "__main__":
         tune=args.tune,
         tune_iterations=args.tune_iterations,
         tune_epochs=args.tune_epochs,
+        export_onnx=args.export_onnx,
+        onnx_out=args.onnx_out,
     )
     print(f"\n{'='*50}")
     print(f"Version          : {r['version']}")
