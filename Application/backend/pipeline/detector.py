@@ -214,16 +214,17 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
     if best_bic:
         bx1, by1, bx2, by2 = best_bic
         # Marge autour de la zone : le chiffre de controle (encadre) suit le
-        # numero de serie dans le sens de lecture et se fait couper sinon.
-        # 40% dans le sens de lecture, 15% dans l'autre.
+        # numero de serie dans le sens de lecture.
+        # Vertical : marge basse réduite à 15% (40% incluait le code taille
+        # ISO "45G1" sous le BIC, ce qui polluait l'OCR avec des G→6).
         H, W = img.shape[:2]
         zone_vertical = (by2 - by1) > (bx2 - bx1)
         if zone_vertical:
             mw = int(0.15 * (bx2 - bx1))
-            mh = int(0.40 * (by2 - by1))
-        else:
-            mw = int(0.40 * (bx2 - bx1))
             mh = int(0.15 * (by2 - by1))
+        else:
+            mw = int(0.20 * (bx2 - bx1))
+            mh = int(0.10 * (by2 - by1))
         out["bic_zone"] = {
             "bbox": best_bic,
             "confidence": round(best_bic_conf, 4),

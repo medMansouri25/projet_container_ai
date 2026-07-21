@@ -153,6 +153,11 @@ def resolve_bic(texts) -> dict:
     """
     cleaned = [re.sub(r"[^A-Z0-9?]", "", t.upper()) for t in texts if t]
     cleaned = [c for c in cleaned if c]
+    # Exclure les fragments qui ressemblent au code taille ISO (ex. "45G1",
+    # "22G1") : 2 chiffres + lettre + 1 chiffre. Ils apparaissent sous le
+    # marquage BIC sur les conteneurs verticaux et polluent l'OCR (G→6).
+    _SIZE_CODE = re.compile(r"^\d{2}[A-Z]\d$")
+    cleaned = [c for c in cleaned if not _SIZE_CODE.fullmatch(c)]
 
     candidates = list(cleaned)
     for i in range(len(cleaned)):
