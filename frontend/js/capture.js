@@ -57,11 +57,24 @@ el("target-seg").addEventListener("click", (e) => {
 /* ── Modèle (lazy, par cible) ── */
 async function session() {
   if (!state.sessions[state.target]) {
-    el("model-status").textContent = "chargement du modèle…";
+    const mb = state.target === "conteneur" ? 77 : 37;
+    const cached = await modelIsCached(MODELS[state.target].url);
+    el("model-status").textContent = cached
+      ? "chargement depuis le cache…"
+      : `1er téléchargement YOLO (${mb} Mo) — une seule fois…`;
     state.sessions[state.target] = await loadSession(MODELS[state.target].url);
     el("model-status").textContent = "";
   }
   return state.sessions[state.target];
+}
+
+async function modelIsCached(url) {
+  if (!("caches" in window)) return false;
+  try {
+    const abs = new URL(url, location.href).href;
+    const r   = await caches.match(abs);
+    return !!r;
+  } catch { return false; }
 }
 const numClasses = () => MODELS[state.target].numClasses;
 
@@ -170,8 +183,7 @@ el("mode-realtime").addEventListener("click", async () => {
     // Afficher le flux caméra immédiatement (sans attendre le modèle ONNX)
     startCameraPreview();
 
-    // Charger le modèle ONNX en parallèle (peut prendre 10-60s selon la taille)
-    el("model-status").textContent = "chargement du modèle YOLO… (peut prendre 30s)";
+    // Charger le modèle ONNX en parallèle (session() gère le message)
     const s = await session();
     el("model-status").textContent = "modèle prêt ✓";
     setTimeout(() => { el("model-status").textContent = ""; }, 2000);
