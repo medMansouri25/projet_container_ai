@@ -18,7 +18,8 @@ const state = {
   rafId:     null,
   goodStreak: 0,
   captured:  null,          // {source, w, h}
-  videoMode: false,         // true = vidéo importée en lecture live
+  videoMode:   false,       // true = vidéo importée en lecture live
+  previewOnly: false,       // true = caméra sans YOLO (modèle en cours de chargement)
 };
 
 const OCR = {
@@ -165,9 +166,35 @@ el("mode-realtime").addEventListener("click", async () => {
     await video.play();
     el("capture-btn").hidden = false;
     el("stop-btn").hidden    = false;
-    loopWebcam(await session());
+
+    // Afficher le flux caméra immédiatement (sans attendre le modèle ONNX)
+    startCameraPreview();
+
+    // Charger le modèle ONNX en parallèle (peut prendre 10-60s selon la taille)
+    el("model-status").textContent = "chargement du modèle YOLO… (peut prendre 30s)";
+    const s = await session();
+    el("model-status").textContent = "modèle prêt ✓";
+    setTimeout(() => { el("model-status").textContent = ""; }, 2000);
+    state.previewOnly = false;
+    loopWebcam(s);
   } catch (err) { showError("Caméra inaccessible : " + err.message); }
 });
+
+/* Prévisualisation caméra brute (sans YOLO) pendant le chargement du modèle. */
+function startCameraPreview() {
+  state.previewOnly = true;
+  const tick = () => {
+    if (!state.stream || !state.previewOnly) return;
+    if (video.videoWidth && video.videoHeight) {
+      overlay.width  = video.videoWidth;
+      overlay.height = video.videoHeight;
+      octx.drawImage(video, 0, 0);
+      state.captured = { source: video, w: video.videoWidth, h: video.videoHeight };
+    }
+    requestAnimationFrame(tick);
+  };
+  tick();
+}
 
 async function loopWebcam(s) {
   const tick = async () => {
@@ -253,8 +280,9 @@ function stopLive() {
 
 function reset() {
   stopLive();
-  state.captured   = null;
-  state.goodStreak = 0;
+  state.captured    = null;
+  state.goodStreak  = 0;
+  state.previewOnly = false;
   el("result-section").hidden = true;
   el("capture-btn").hidden    = true;
   el("action-row").hidden     = true;
