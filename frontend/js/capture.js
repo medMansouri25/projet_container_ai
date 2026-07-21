@@ -125,20 +125,19 @@ el("file-input").addEventListener("change", (e) => {
   else showError("Type de fichier non supporté : " + file.type);
 });
 
+/* ── MODE 1a : Image importée → envoi direct au serveur (même pipeline que Scanner BIC) ── */
 async function handlePhoto(file) {
   showActions();
   photo.src = URL.createObjectURL(file);
   await photo.decode();
-  const res = await detect(await session(), photo,
-                           photo.naturalWidth, photo.naturalHeight,
-                           { numClasses: numClasses(), conf: 0.25 });
-  drawFrame(photo, photo.naturalWidth, photo.naturalHeight, res.boxes);
-  setGuide(res.guide.state);
-  el("capture-btn").hidden = false;
-  state.captured = { source: photo, w: photo.naturalWidth, h: photo.naturalHeight };
+  // Affiche l'image sur le canvas
+  drawFrame(photo, photo.naturalWidth, photo.naturalHeight, []);
+  setGuide("aucun");
+  // Envoi immédiat au serveur — pas de ONNX client-side pour les fichiers statiques
+  await runOcr(file);
 }
 
-/* ── MODE 2 : Vidéo importée — lecture live + YOLO frame par frame ── */
+/* ── MODE 1b : Vidéo importée — lecture + capture manuelle → serveur ── */
 async function handleVideo(file) {
   showActions();
   state.videoMode = true;
@@ -147,23 +146,19 @@ async function handleVideo(file) {
   el("capture-btn").hidden = false;
   el("stop-btn").hidden    = false;
   video.play();
-  loopVideo(await session());
+  loopVideoPreview();
 }
 
-async function loopVideo(s) {
-  const tick = async () => {
+function loopVideoPreview() {
+  const tick = () => {
     if (!state.videoMode || video.ended || video.paused) {
       el("stop-btn").hidden = true;
       return;
     }
-    if (!video.videoWidth || !video.videoHeight) {
-      state.rafId = requestAnimationFrame(tick); return;
+    if (video.videoWidth && video.videoHeight) {
+      drawFrame(video, video.videoWidth, video.videoHeight, []);
+      state.captured = { source: video, w: video.videoWidth, h: video.videoHeight };
     }
-    const res = await detect(s, video, video.videoWidth, video.videoHeight,
-                             { numClasses: numClasses(), conf: 0.25 });
-    drawFrame(video, video.videoWidth, video.videoHeight, res.boxes);
-    setGuide(res.guide.state);
-    state.captured = { source: video, w: video.videoWidth, h: video.videoHeight };
     state.rafId = requestAnimationFrame(tick);
   };
   tick();
