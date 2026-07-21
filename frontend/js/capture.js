@@ -1,39 +1,47 @@
 /* capture.js — écran de capture multi-source.
-   2 façons de capturer : IMPORTER un fichier (image OU vidéo, routé selon le
-   type MIME) ou DÉTECTION TEMPS RÉEL (caméra). Détection client-side
-   (webdetect.js) pour le repère de distance E1 ; lecture OCR sur le serveur. */
+   3 modes : IMPORTER image, IMPORTER vidéo (lecture live + YOLO), CAMÉRA temps réel.
+   Détection client-side (webdetect.js + onnxruntime-web) pour le repère de cadrage ;
+   OCR final sur le serveur (POST /api/scan ou /api/scan-plaque). */
 
-import { loadSession, detect, detectVideoFrames, seekTo, MODELS } from "./webdetect.js";
+import { loadSession, detect, seekTo, MODELS } from "./webdetect.js";
 
 const el = (id) => document.getElementById(id);
 const overlay = el("overlay");
-const octx = overlay.getContext("2d");
-const video = el("video");
-const photo = el("photo");
+const octx    = overlay.getContext("2d");
+const video   = el("video");
+const photo   = el("photo");
 
 const state = {
-  target: "conteneur",   // conteneur | plaque
-  sessions: {},          // cache sessions ort par cible
-  stream: null,
-  rafId: null,
+  target:    "conteneur",   // conteneur | plaque
+  sessions:  {},            // cache sessions ort par cible
+  stream:    null,          // MediaStream (caméra)
+  rafId:     null,
   goodStreak: 0,
-  captured: null,        // {source, w, h}
+  captured:  null,          // {source, w, h}
+  videoMode: false,         // true = vidéo importée en lecture live
 };
 
 const OCR = {
-  conteneur: { endpoint: "/api/scan", field: "bic", label: "Code ISO (BIC)" },
+  conteneur: { endpoint: "/api/scan",        field: "bic",   label: "Code ISO (BIC)" },
   plaque:    { endpoint: "/api/scan-plaque", field: "plaque", label: "Immatriculation" },
 };
 
-const showError = (m) => { const a = el("error-alert"); a.textContent = m; a.hidden = false; };
-const clearError = () => { el("error-alert").hidden = true; };
+// Noms de classes par cible (doivent correspondre à l'ordre du modèle ONNX)
+const CLASS_NAMES = {
+  conteneur: ["Conteneur", "Fruit"],
+  plaque:    ["Plaque"],
+};
+const BOX_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7"];
 
+const showError  = (m) => { const a = el("error-alert"); a.textContent = m; a.hidden = false; };
+const clearError = ()  => { el("error-alert").hidden = true; };
 const T = (k) => (window.i18n ? window.i18n.t(k) : k);
 
 function setGuide(s) {
   const g = el("guide");
   g.className = "g-" + s;
-  g.textContent = T("guide." + s);
+  const MAP = { aucun: "aucun objet", trop_loin: "trop loin — approchez", trop_pres: "trop près — reculez", bon: "bien cadré ✓" };
+  g.textContent = MAP[s] || s;
 }
 
 /* ── Sélecteur d'entité ── */
@@ -56,24 +64,48 @@ async function session() {
 }
 const numClasses = () => MODELS[state.target].numClasses;
 
-/* ── Dessin ── */
-function drawFrame(source, w, h, box) {
-  overlay.width = w; overlay.height = h;
+/* ── Dessin : toutes les boîtes avec label classe + score ── */
+function drawFrame(source, w, h, boxes = []) {
+  if (!w || !h) return;
+  overlay.width  = w;
+  overlay.height = h;
   octx.drawImage(source, 0, 0, w, h);
-  if (box) {
-    octx.strokeStyle = "#2ecc71"; octx.lineWidth = Math.max(2, w / 200);
+
+  const names = CLASS_NAMES[state.target] || [];
+  const lw    = Math.max(2, w / 200);
+  const fs    = Math.max(13, Math.round(w / 42));
+
+  for (const box of (Array.isArray(boxes) ? boxes : box ? [boxes] : [])) {
+    const color = BOX_COLORS[(box.cls || 0) % BOX_COLORS.length];
+    const label = `${names[box.cls || 0] || "?"} ${Math.round((box.score || 0) * 100)}%`;
+
+    // Rectangle de détection
+    octx.strokeStyle = color;
+    octx.lineWidth   = lw;
     octx.strokeRect(box.x, box.y, box.w, box.h);
+
+    // Badge label au-dessus de la boîte
+    octx.font = `bold ${fs}px sans-serif`;
+    const tw = octx.measureText(label).width;
+    const tx = Math.max(0, box.x);
+    const ty = Math.max(fs + 6, box.y - 2);
+    octx.fillStyle = color;
+    octx.fillRect(tx, ty - fs - 4, tw + 10, fs + 6);
+    octx.fillStyle = "#ffffff";
+    octx.fillText(label, tx + 5, ty - 1);
   }
 }
+
 function showActions() { el("action-row").hidden = false; }
 
-/* ── MODE 1 : Importer un fichier (image OU vidéo) ── */
+/* ── MODE 1 : Importer une image ── */
 el("mode-import").addEventListener("click", () => el("file-input").click());
 
 el("file-input").addEventListener("change", (e) => {
   const file = e.target.files[0]; if (!file) return;
+  e.target.value = "";            // permet de re-choisir le même fichier
   clearError(); reset();
-  if (file.type.startsWith("video/")) handleVideo(file);
+  if (file.type.startsWith("video/"))      handleVideo(file);
   else if (file.type.startsWith("image/")) handlePhoto(file);
   else showError("Type de fichier non supporté : " + file.type);
 });
@@ -82,62 +114,71 @@ async function handlePhoto(file) {
   showActions();
   photo.src = URL.createObjectURL(file);
   await photo.decode();
-  const res = await detect(await session(), photo, photo.naturalWidth, photo.naturalHeight,
+  const res = await detect(await session(), photo,
+                           photo.naturalWidth, photo.naturalHeight,
                            { numClasses: numClasses(), conf: 0.25 });
-  drawFrame(photo, photo.naturalWidth, photo.naturalHeight, res.box);
+  drawFrame(photo, photo.naturalWidth, photo.naturalHeight, res.boxes);
   setGuide(res.guide.state);
   el("capture-btn").hidden = false;
   state.captured = { source: photo, w: photo.naturalWidth, h: photo.naturalHeight };
 }
 
+/* ── MODE 2 : Vidéo importée — lecture live + YOLO frame par frame ── */
 async function handleVideo(file) {
   showActions();
-  el("model-status").textContent = "analyse de la vidéo…";
+  state.videoMode = true;
   video.src = URL.createObjectURL(file);
   await new Promise((r) => video.addEventListener("loadeddata", r, { once: true }));
-  const s = await session();
-  let best = null;
-  await detectVideoFrames(s, video, {
-    everySeconds: 0.5, numClasses: numClasses(), conf: 0.25,
-    onFrame: (t, r) => {
-      drawFrame(video, video.videoWidth, video.videoHeight, r.box);
-      setGuide(r.guide.state);
-      if (r.box && r.guide.capture && (!best || r.box.score > best.box.score)) best = { t, ...r };
-    },
-  });
-  el("model-status").textContent = "";
-  if (best) {
-    await seekTo(video, best.t);
-    drawFrame(video, video.videoWidth, video.videoHeight, best.box);
-    setGuide(best.guide.state);
-    el("capture-btn").hidden = false;
-    state.captured = { source: video, w: video.videoWidth, h: video.videoHeight };
-  } else {
-    showError("Aucune frame bien cadrée trouvée dans la vidéo. Réessaie avec une vue plus rapprochée.");
-  }
+  el("capture-btn").hidden = false;
+  el("stop-btn").hidden    = false;
+  video.play();
+  loopVideo(await session());
 }
 
-/* ── MODE 2 : Détection temps réel (caméra) ── */
+async function loopVideo(s) {
+  const tick = async () => {
+    if (!state.videoMode || video.ended || video.paused) {
+      el("stop-btn").hidden = true;
+      return;
+    }
+    if (!video.videoWidth || !video.videoHeight) {
+      state.rafId = requestAnimationFrame(tick); return;
+    }
+    const res = await detect(s, video, video.videoWidth, video.videoHeight,
+                             { numClasses: numClasses(), conf: 0.25 });
+    drawFrame(video, video.videoWidth, video.videoHeight, res.boxes);
+    setGuide(res.guide.state);
+    state.captured = { source: video, w: video.videoWidth, h: video.videoHeight };
+    state.rafId = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+/* ── MODE 3 : Caméra temps réel ── */
 el("mode-realtime").addEventListener("click", async () => {
   clearError(); reset(); showActions();
   try {
     state.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1280 } } });
+      video: { facingMode: "environment", width: { ideal: 1280 } },
+    });
     video.srcObject = state.stream;
     await video.play();
     el("capture-btn").hidden = false;
-    el("stop-btn").hidden = false;
-    loopWebcam();
+    el("stop-btn").hidden    = false;
+    loopWebcam(await session());
   } catch (err) { showError("Caméra inaccessible : " + err.message); }
 });
 
-async function loopWebcam() {
-  const s = await session();
+async function loopWebcam(s) {
   const tick = async () => {
     if (!state.stream) return;
+    // Attendre que la caméra soit prête (videoWidth=0 les premières ms)
+    if (!video.videoWidth || !video.videoHeight) {
+      state.rafId = requestAnimationFrame(tick); return;
+    }
     const res = await detect(s, video, video.videoWidth, video.videoHeight,
                              { numClasses: numClasses(), conf: 0.25 });
-    drawFrame(video, video.videoWidth, video.videoHeight, res.box);
+    drawFrame(video, video.videoWidth, video.videoHeight, res.boxes);
     setGuide(res.guide.state);
     state.captured = { source: video, w: video.videoWidth, h: video.videoHeight };
     state.goodStreak = res.guide.capture ? state.goodStreak + 1 : 0;
@@ -154,7 +195,7 @@ el("capture-btn").addEventListener("click", doCapture);
 
 async function doCapture() {
   if (!state.captured) return;
-  stopWebcam();
+  stopLive();
   const { source, w, h } = state.captured;
   const c = document.createElement("canvas"); c.width = w; c.height = h;
   c.getContext("2d").drawImage(source, 0, 0, w, h);
@@ -168,7 +209,7 @@ async function runOcr(blob) {
   try {
     const fd = new FormData();
     fd.append("image", blob, "capture.jpg");
-    const r = await fetch(`${await window.apiBase()}${cfg.endpoint}`, { method: "POST", body: fd });
+    const r    = await fetch(`${await window.apiBase()}${cfg.endpoint}`, { method: "POST", body: fd });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || "Erreur serveur");
     showProposal(data);
@@ -181,13 +222,14 @@ async function runOcr(blob) {
 
 function showProposal(data) {
   const cfg = OCR[state.target];
-  el("result-section").hidden = false;
+  el("result-section").hidden  = false;
   el("value-label").textContent = cfg.label;
-  el("value-input").value = data[cfg.field] || "";
-  el("result-raw").textContent = data.raw_text ? "OCR brut : " + data.raw_text : "";
+  el("value-input").value       = data[cfg.field] || "";
+  el("result-raw").textContent  = data.raw_text ? "OCR brut : " + data.raw_text : "";
   const badges = [];
-  badges.push(data.valid ? `<span class="badge badge-ok">${T("badge.valid")}</span>`
-                         : `<span class="badge badge-warn">${T("badge.check")}</span>`);
+  badges.push(data.valid
+    ? `<span class="badge badge-ok">${T("badge.valid")}</span>`
+    : `<span class="badge badge-warn">${T("badge.check")}</span>`);
   if (data.corrected) badges.push(`<span class="badge badge-warn">${T("badge.recalc")}</span>`);
   el("result-badges").innerHTML = badges.join(" ");
 }
@@ -202,17 +244,20 @@ el("confirm-btn").addEventListener("click", () => {
 el("again-btn").addEventListener("click", reset);
 
 /* ── Utilitaires ── */
-function stopWebcam() {
+function stopLive() {
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
   if (state.stream) { state.stream.getTracks().forEach((t) => t.stop()); state.stream = null; }
+  if (state.videoMode) { video.pause(); video.src = ""; state.videoMode = false; }
   el("stop-btn").hidden = true;
 }
+
 function reset() {
-  stopWebcam();
-  state.captured = null; state.goodStreak = 0;
+  stopLive();
+  state.captured   = null;
+  state.goodStreak = 0;
   el("result-section").hidden = true;
-  el("capture-btn").hidden = true;
-  el("action-row").hidden = true;
+  el("capture-btn").hidden    = true;
+  el("action-row").hidden     = true;
   octx.clearRect(0, 0, overlay.width, overlay.height);
   setGuide("aucun");
 }

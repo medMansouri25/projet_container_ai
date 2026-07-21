@@ -420,6 +420,8 @@ nav a[aria-current="page"] { color: var(--primary); font-weight: 700; }
 .stage { position:relative; margin:0 0 1rem; }
 .stage canvas { width:100%; max-width:640px; border-radius:14px; background:#0f172a;
                 display:block; box-shadow:0 4px 16px rgba(0,0,0,.14); }
+/* video et img sont des sources pour le canvas — jamais affichés directement */
+.stage video, .stage img { display:none; }
 .guide-bar { display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; margin-bottom:.8rem; }
 .guide { display:inline-flex; align-items:center; gap:.4rem; font-weight:700; padding:.35rem .8rem;
          border-radius:999px; font-size:.9rem; }

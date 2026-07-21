@@ -58,7 +58,8 @@ export async function detect(session, source, srcW, srcH, { numClasses = 1, conf
   boxes = nms(boxes, 0.45);
   const best = bestBox(boxes);
   return {
-    box: best ? scaleBoxToImage(best, lb) : null,
+    box:   best ? scaleBoxToImage(best, lb) : null,
+    boxes: boxes.map((b) => scaleBoxToImage(b, lb)),
     guide: distanceGuide(best, IMG),
     count: boxes.length,
   };
