@@ -28,8 +28,9 @@ const OCR = {
 };
 
 // Noms de classes par cible (doivent correspondre à l'ordre du modèle ONNX)
+// conteneur → modèle spécialiste bic/ : 1 classe NumeroBIC
 const CLASS_NAMES = {
-  conteneur: ["Conteneur", "Fruit"],
+  conteneur: ["Code BIC"],
   plaque:    ["Plaque"],
 };
 const BOX_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7"];

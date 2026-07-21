@@ -2,7 +2,7 @@
    Stratégie : cache-first pour *.onnx, réseau pour tout le reste.
    Mise à jour : changer CACHE_NAME force un re-téléchargement des modèles. */
 
-const CACHE_NAME = "smartcontainer-models-v1";
+const CACHE_NAME = "smartcontainer-models-v2";  // v2 : conteneur.onnx = modèle BIC spécialiste
 const ONNX_PATTERN = /\.onnx(\?|$)/;
 
 self.addEventListener("install", () => self.skipWaiting());

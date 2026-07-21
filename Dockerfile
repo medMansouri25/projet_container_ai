@@ -25,6 +25,11 @@ COPY Application/dataset/data.yaml ./Application/dataset/data.yaml
 # Modèles versionnés (metadata.json + best_vN.pt trackés dans git)
 COPY Application/models/ ./Application/models/
 
+# Export ONNX au build : génère les .onnx pour le navigateur à partir
+# des .pt déjà copiés (pas de réseau, pas de téléchargement)
+COPY Application/ml/export_onnx.py ./Application/ml/export_onnx.py
+RUN python Application/ml/export_onnx.py --target conteneur plaque
+
 EXPOSE 5000
 
 ENV FLASK_APP=Application/backend/app.py

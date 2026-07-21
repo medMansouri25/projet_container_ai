@@ -46,8 +46,10 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 @app.after_request
 def cors(response):
-    """CORS ouvert sur l'API : le front statique (Vercel) appelle ce backend."""
-    if request.path.startswith("/api/") or request.path.startswith("/uploads/"):
+    """CORS ouvert sur l'API et les modèles ONNX (front statique Vercel)."""
+    if (request.path.startswith("/api/")
+            or request.path.startswith("/uploads/")
+            or request.path.startswith("/models/")):
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
@@ -490,6 +492,28 @@ def _compute_stats(scans: list) -> dict:
 @app.route("/uploads/<path:name>")
 def uploads(name):
     return send_from_directory(UPLOAD_FOLDER, name)
+
+
+# Modèles ONNX pour le navigateur (onnxruntime-web).
+# conteneur.onnx → bic/best_v1.onnx  (1 classe NumeroBIC, mAP50 99.5%)
+# plaque.onnx    → plaque/best_v1.onnx (1 classe immatriculation, mAP50 99.5%)
+_ONNX_MAP = {
+    "conteneur.onnx": os.path.join(
+        os.path.dirname(__file__), "..", "..", "Application", "models", "bic", "best_v1.onnx"),
+    "plaque.onnx": os.path.join(
+        os.path.dirname(__file__), "..", "..", "Application", "models", "plaque", "best_v1.onnx"),
+}
+
+
+@app.route("/models/<name>")
+def serve_model(name):
+    """Sert les modèles ONNX au front Vercel (via SW cache)."""
+    path = _ONNX_MAP.get(name)
+    if not path or not os.path.exists(os.path.abspath(path)):
+        return f"Modèle {name} introuvable", 404
+    directory = os.path.abspath(os.path.dirname(path))
+    return send_from_directory(directory, os.path.basename(path),
+                               mimetype="application/octet-stream")
 
 
 if __name__ == "__main__":

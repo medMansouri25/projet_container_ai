@@ -3,6 +3,7 @@
    par Caddy sur le domaine fixe ci-dessous. */
 
 const API_BASE = "https://api.containerai-marsa-maroc.online";
+window.API_BASE = API_BASE;   // exposé pour webdetect.js (chargement modèles ONNX)
 
 async function apiBase() {
   return API_BASE;

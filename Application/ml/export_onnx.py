@@ -5,7 +5,8 @@ Exporte les modèles YOLO en ONNX (onnxruntime-web, WASM).
 Entrée figée (1,3,640,640), opset 12 = large compat web.
 
 Cibles disponibles :
-  conteneur       -> models/best_vN.pt          -> frontend/models/conteneur.onnx
+  conteneur       -> models/bic/best_vN.pt      -> frontend/models/conteneur.onnx
+                     (modèle spécialiste NumeroBIC, mAP50 99.5%, 1 classe)
   plaque          -> models/plaque/best_vN.pt   -> frontend/models/plaque.onnx
   plaque_browser  -> models/plaque_browser/best_vN.pt -> frontend/models/plaque.onnx
                      (yolo11n entrainé via : trainImmat.bat browser)
@@ -27,9 +28,11 @@ OUT_DIR = os.path.join(ROOT, "frontend", "models")
 IMGSZ   = 640
 
 # Définition des cibles : (dossier modèle, nom fichier ONNX de sortie)
+# conteneur → modèle spécialiste BIC (mAP50 99.5%, 1 classe NumeroBIC)
+# Le modèle général best_v2.pt (2 classes) reste sur le VPS pour detect_container()
 TARGETS = {
     "conteneur": (
-        os.path.join(ROOT, "Application", "models"),
+        os.path.join(ROOT, "Application", "models", "bic"),
         "conteneur.onnx",
     ),
     "plaque": (

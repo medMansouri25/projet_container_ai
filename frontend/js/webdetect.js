@@ -7,10 +7,14 @@ import { parseYoloOutput, nms, bestBox, distanceGuide, scaleBoxToImage, sampleFr
 
 export const IMG = 640;
 
-// nc par modèle (cf. export_onnx.py / metadata) : plaque=1, conteneur=2 (Conteneur,Fruit)
+// Modèles servis par le VPS Flask (/models/<name>) — cache SW après 1er téléchargement.
+// nc : plaque=1 (immatriculation), conteneur=1 (NumeroBIC, modèle spécialiste bic/)
+const _VPS = typeof window !== "undefined" && window.API_BASE
+  ? window.API_BASE : "https://api.containerai-marsa-maroc.online";
+
 export const MODELS = {
-  plaque: { url: "models/plaque.onnx", numClasses: 1 },
-  conteneur: { url: "models/conteneur.onnx", numClasses: 2 },
+  plaque:    { url: `${_VPS}/models/plaque.onnx`,    numClasses: 1 },
+  conteneur: { url: `${_VPS}/models/conteneur.onnx`, numClasses: 1 },
 };
 
 export async function loadSession(url) {
