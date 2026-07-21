@@ -221,15 +221,19 @@ def detect_container(image_path: str, models_dir: str = DEFAULT_MODELS_DIR,
         zone_vertical = (by2 - by1) > (bx2 - bx1)
         if zone_vertical:
             mw = int(0.15 * (bx2 - bx1))
-            mh = int(0.15 * (by2 - by1))
+            mh_top = int(0.15 * (by2 - by1))
         else:
             mw = int(0.20 * (bx2 - bx1))
-            mh = int(0.10 * (by2 - by1))
+            mh_top = int(0.10 * (by2 - by1))
+        # Marge basse réduite à 3% dans tous les cas : le code taille ISO
+        # (ex. "45G1") est systématiquement SOUS la zone BIC ; une marge plus
+        # grande l'incluait dans le crop et polluait l'OCR (G→6, etc.).
+        mh_bot = int(0.03 * (by2 - by1))
         out["bic_zone"] = {
             "bbox": best_bic,
             "confidence": round(best_bic_conf, 4),
-            "vertical": (by2 - by1) > (bx2 - bx1),
-            "crop": img[max(0, by1 - mh):min(H, by2 + mh),
+            "vertical": zone_vertical,
+            "crop": img[max(0, by1 - mh_top):min(H, by2 + mh_bot),
                         max(0, bx1 - mw):min(W, bx2 + mw)],
         }
 

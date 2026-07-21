@@ -226,6 +226,10 @@ def extract_plaque(image, reader=None, time_budget: float = 12.0) -> dict:
             img = variant if scale == 1 else cv2.resize(
                 variant, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
             results = reader.readtext(img, allowlist=_allowlist())
+            # Tri gauche→droite par position X : EasyOCR en mode arabe lit
+            # parfois en RTL, ce qui place la région (droite) avant la série
+            # (gauche) et casse l'assemblage dans resolve_plaque.
+            results = sorted(results, key=lambda r: min(p[0] for p in r[0]))
             texts = [r[1] for r in results]
             confs = [float(r[2]) for r in results]
             res = resolve_plaque(texts)
