@@ -94,33 +94,44 @@ def resolve_plaque(texts) -> dict:
     letter_frag_idx = -1
     best_prio = 3
 
+    letter_char_pos = -1  # position du char lettre dans son fragment
+
     for i, frag in enumerate(cleaned):
-        ar_chars = [ch for ch in frag if "؀" <= ch <= "ۿ"]
-        for ch in ar_chars:
+        ar_chars = [(pos, ch) for pos, ch in enumerate(frag) if "؀" <= ch <= "ۿ"]
+        for pos, ch in ar_chars:
             if ch in MOROCCAN_LETTERS:
                 prio = 2 if ch in {"ا", "أ", "إ", "آ"} else 1
                 if prio < best_prio:
                     best_prio = prio
                     letter = ch
                     letter_frag_idx = i
+                    letter_char_pos = pos
                 if best_prio == 1:
-                    break   # lettre connue non-alif : impossible de faire mieux
+                    break
+        if best_prio == 1:
+            break   # impossible de faire mieux : arrêt total
 
     # Fallback : n'importe quel caractère arabe si aucune lettre connue trouvée
     if letter_frag_idx < 0:
         for i, frag in enumerate(cleaned):
-            for ch in frag:
+            for pos, ch in enumerate(frag):
                 if "؀" <= ch <= "ۿ":
                     letter_frag_idx = i
+                    letter_char_pos = pos
                     break
             if letter_frag_idx >= 0:
                 break
 
     if letter_frag_idx >= 0:
-        # Série = chiffres de tous les fragments AVANT le fragment lettre
-        left = "".join(re.sub(r"\D", "", f) for f in cleaned[:letter_frag_idx])
-        # Région = chiffres de tous les fragments APRÈS le fragment lettre
-        right = "".join(re.sub(r"\D", "", f) for f in cleaned[letter_frag_idx + 1:])
+        frag = cleaned[letter_frag_idx]
+        # Le fragment peut fusionner série + lettre (ex : "40129هـا").
+        # On découpe aussi à l'INTÉRIEUR du fragment autour de la lettre.
+        frag_left  = re.sub(r"\D", "", frag[:letter_char_pos])
+        frag_right = re.sub(r"\D", "", frag[letter_char_pos + 1:])
+        # Série = chiffres des fragments AVANT + partie gauche du fragment lettre
+        left  = "".join(re.sub(r"\D", "", f) for f in cleaned[:letter_frag_idx]) + frag_left
+        # Région = partie droite du fragment lettre + chiffres des fragments APRÈS
+        right = frag_right + "".join(re.sub(r"\D", "", f) for f in cleaned[letter_frag_idx + 1:])
     else:
         # Pas de lettre lue : premier fragment chiffres = série, dernier = région
         digit_frags = [f for f in cleaned if f.isdigit()]
