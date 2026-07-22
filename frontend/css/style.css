@@ -429,7 +429,8 @@ nav a[aria-current="page"] { color: var(--primary); font-weight: 700; }
 .g-trop_loin, .g-trop_pres { background:#fef3c7; color:var(--warn); }
 .g-bon { background:#dcfce7; color:var(--ok); }
 .value-input { width:100%; max-width:22rem; font-size:1.3rem; font-family:'Consolas',monospace;
-               letter-spacing:1px; padding:.6rem .9rem; border:2px solid #cbd5e1; border-radius:8px; }
+               letter-spacing:1px; padding:.6rem .9rem; border:2px solid #cbd5e1; border-radius:8px;
+               direction:ltr; unicode-bidi:bidi-override; }
 .value-input:focus { border-color:var(--primary); outline:none; }
 
 /* Boutons action alignés */
