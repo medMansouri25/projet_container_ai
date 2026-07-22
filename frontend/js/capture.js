@@ -24,6 +24,7 @@ const state = {
   cameraMode:   false,       // true = flux caméra continu (ANPR)
   cooldownUntil: 0,          // ms : auto-capture inhibée jusqu'à ce timestamp
   ocrPending:   0,           // nb de requêtes OCR en vol
+  dossierId:    null,        // dossier de passage courant (Mission 6)
 };
 
 const OCR = {
@@ -360,15 +361,104 @@ function showProposal(data) {
   el("result-badges").innerHTML = badges.join(" ");
 }
 
-/* ── Confirmer ── */
+/* ── Confirmer → rattacher au dossier de passage ── */
 el("confirm-btn").addEventListener("click", doConfirm);
 
-function doConfirm() {
+async function doConfirm() {
   const value = el("value-input").value.trim();
   if (!value) return;
-  window.__CONFIRMED__ = { target: state.target, value };
-  alert(`À rattacher au dossier (Mission 6) : ${state.target} = ${value}`);
+  clearError();
+  el("confirm-btn").disabled = true;
+  try {
+    const r = await fetch(`${await window.apiBase()}/api/passage/confirmer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target:     state.target,
+        valeur:     value,
+        dossier_id: state.dossierId || undefined,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Erreur serveur");
+    state.dossierId = data.dossier_id;
+    renderDossier(data.dossier);
+  } catch (err) {
+    showError("Rattachement impossible : " + err.message);
+  } finally {
+    el("confirm-btn").disabled = false;
+  }
 }
+
+/* ── Dossier de passage (Mission 6) ── */
+
+function renderDossier(dossier) {
+  const d = el("dossier-section");
+  d.hidden = false;
+
+  const conteneur = dossier.conteneur;
+  const camion    = dossier.camion;
+  const hasEntity = !!(conteneur || camion);
+  const valide    = dossier.statut === "valide";
+
+  el("dossier-ref").textContent  = `#${dossier.id}`;
+  el("dossier-badge").textContent = valide ? "validé" : "en attente";
+  el("dossier-badge").className   = "badge " + (valide ? "badge-ok" : "badge-warn");
+  el("dossier-vide").hidden       = hasEntity;
+
+  el("entity-conteneur").hidden = !conteneur;
+  el("entity-camion").hidden    = !camion;
+  if (conteneur) el("entity-bic").textContent   = conteneur.code_iso;
+  if (camion)    el("entity-plaque").textContent = camion.immatriculation;
+
+  el("valider-passage-btn").hidden  = valide || !hasEntity;
+  el("attente-btn").hidden          = valide;
+  el("abandon-btn").hidden          = valide;
+  el("nouveau-passage-btn").hidden  = false;
+  el("dossier-msg").textContent     = valide
+    ? `Passage #${dossier.id} enregistré.` : "";
+}
+
+el("valider-passage-btn").addEventListener("click", async () => {
+  if (!state.dossierId) return;
+  try {
+    const r = await fetch(
+      `${await window.apiBase()}/api/dossiers/${state.dossierId}/validate`,
+      { method: "POST" });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    el("dossier-badge").textContent = "validé";
+    el("dossier-badge").className   = "badge badge-ok";
+    el("valider-passage-btn").hidden = true;
+    el("attente-btn").hidden         = true;
+    el("abandon-btn").hidden         = true;
+    el("dossier-msg").textContent    = `Passage #${state.dossierId} enregistré.`;
+    state.dossierId = null;   // prochain Confirmer = nouveau dossier
+  } catch (err) { showError("Validation impossible : " + err.message); }
+});
+
+el("attente-btn").addEventListener("click", () => {
+  // Le dossier reste en base (en_attente) — l'agent le retrouvera dans l'historique.
+  state.dossierId = null;
+  el("dossier-section").hidden = true;
+});
+
+el("abandon-btn").addEventListener("click", async () => {
+  if (!state.dossierId) { el("dossier-section").hidden = true; return; }
+  try {
+    await fetch(
+      `${await window.apiBase()}/api/dossiers/${state.dossierId}/abandon`,
+      { method: "POST" });
+  } catch { /* abandon best-effort */ }
+  state.dossierId = null;
+  el("dossier-section").hidden = true;
+});
+
+el("nouveau-passage-btn").addEventListener("click", () => {
+  state.dossierId = null;
+  el("dossier-section").hidden = true;
+  el("dossier-msg").textContent = "";
+});
 
 el("again-btn").addEventListener("click", reset);
 

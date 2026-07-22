@@ -467,6 +467,17 @@ nav a[aria-current="page"] { color: var(--primary); font-weight: 700; }
 }
 .btn-sm:hover { background:var(--primary-dark); }
 
+/* ── Dossier de passage (Mission 6) ── */
+.dossier-header { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem;
+                  margin-bottom:.8rem; }
+.dossier-entities { display:flex; flex-direction:column; gap:.5rem; }
+.entity-row { display:flex; align-items:center; gap:.7rem; padding:.55rem .8rem;
+              border-radius:10px; border:1.5px solid #86efac; background:#f0fdf4; }
+.entity-row .icon { width:18px; height:18px; flex-shrink:0; color:var(--ok); }
+.entity-type { font-size:.82rem; font-weight:600; color:var(--muted); flex-shrink:0; }
+.entity-val  { font-family:'Consolas',monospace; font-size:1rem; letter-spacing:.5px;
+               direction:ltr; unicode-bidi:bidi-override; }
+
 @media (max-width:560px){
   .option-group, .modes { grid-template-columns:1fr; }
   .det-card { flex-wrap:wrap; }

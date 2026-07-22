@@ -447,6 +447,54 @@ def _image_path(image_name):
     return f"uploads/{image_name}" if image_name else None
 
 
+def _serialize_dossier(d: dict) -> dict:
+    """Convertit les timestamps en ISO string pour la sérialisation JSON."""
+    if d is None:
+        return d
+    for k in ("created_at", "validated_at"):
+        if d.get(k) is not None and hasattr(d[k], "isoformat"):
+            d[k] = d[k].isoformat()
+    for det in d.get("detections", []):
+        if det.get("timestamp") and hasattr(det["timestamp"], "isoformat"):
+            det["timestamp"] = det["timestamp"].isoformat()
+    return d
+
+
+@app.route("/api/passage/confirmer", methods=["POST"])
+def api_passage_confirmer():
+    """Endpoint de confort Mission 6 : confirme une entité dans un dossier
+    en un seul appel.  Corps : {target, valeur, dossier_id?, confidence?}
+    - Si dossier_id absent → crée un dossier (source='capture').
+    - Rattache l'entité (conteneur ou camion) au dossier.
+    - Retourne {dossier_id, dossier} (dossier agrégé complet).
+    """
+    db.init_dossier_db()
+    data = request.get_json(silent=True) or {}
+    target = data.get("target")
+    valeur = (data.get("valeur") or "").strip()
+    dossier_id = data.get("dossier_id")
+    confidence = _as_float(data.get("confidence"))
+
+    if target not in ("conteneur", "plaque"):
+        return jsonify({"error": "target invalide : conteneur ou plaque"}), 400
+    if not valeur:
+        return jsonify({"error": "valeur manquante"}), 400
+
+    if not dossier_id:
+        dossier_id = db.create_dossier(source="capture")
+
+    if target == "conteneur":
+        code = valeur.replace(" ", "").upper()
+        db.set_conteneur(dossier_id, code)
+        db.add_detection(dossier_id, "conteneur", code, confidence)
+    else:
+        db.set_camion(dossier_id, valeur)
+        db.add_detection(dossier_id, "plaque", valeur, confidence)
+
+    dossier = db.get_dossier(dossier_id)
+    return jsonify({"dossier_id": dossier_id, "dossier": _serialize_dossier(dossier)})
+
+
 def _compute_stats(scans: list) -> dict:
     """KPIs et séries pour le dashboard (calculés côté Python)."""
     from datetime import date, timedelta
