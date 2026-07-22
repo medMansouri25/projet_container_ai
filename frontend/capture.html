@@ -4,28 +4,56 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Capture — SmartContainer AI</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=2">
+  <script defer src="js/nav.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
   <script type="module" src="js/i18n.js"></script>
 </head>
 <body>
-  <nav>
-    <span class="brand">
-      <svg class="icon icon-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6.5"/><path d="M10 6v4"/><path d="M14 6v4"/><path d="M2 12.5h20l-1.5 6a2 2 0 0 1-2 1.5h-13a2 2 0 0 1-2-1.5z"/></svg>
-      SmartContainer AI
-    </span>
-    <a href="index.html" data-i18n="nav.scan">Scanner BIC</a>
-    <a href="capture.html" data-i18n="nav.capture" aria-current="page">Capture passage</a>
-    <a href="history.html" data-i18n="nav.history">Historique</a>
-    <a href="dashboard.html" data-i18n="nav.dashboard">Dashboard</a>
-    <label class="sr-only" for="lang-select">Langue / اللغة</label>
-    <select id="lang-select" class="lang-select">
-      <option value="fr">FR</option>
-      <option value="ar">ع</option>
-    </select>
-  </nav>
+  <a class="skip-link" href="#main-content">Passer au contenu</a>
+  <header class="site-header">
+    <nav class="site-nav" role="navigation" aria-label="Navigation principale">
 
-  <main>
+      <a href="index.html" class="nav-brand" aria-label="SmartContainer AI — Accueil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6.5"/><path d="M10 6v4"/><path d="M14 6v4"/><path d="M2 12.5h20l-1.5 6a2 2 0 0 1-2 1.5h-13a2 2 0 0 1-2-1.5z"/></svg>
+        <span class="nav-brand-text">SmartContainer AI</span>
+      </a>
+
+      <button class="nav-toggle" id="nav-toggle" aria-controls="nav-menu" aria-expanded="false" aria-label="Ouvrir le menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+      </button>
+
+      <ul class="nav-menu" id="nav-menu" role="list">
+        <li><a href="index.html" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+          <span data-i18n="nav.scan">Scanner BIC</span>
+        </a></li>
+        <li><a href="capture.html" class="nav-link" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+          <span data-i18n="nav.capture">Capture passage</span>
+        </a></li>
+        <li><a href="history.html" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+          <span data-i18n="nav.history">Historique</span>
+        </a></li>
+        <li><a href="dashboard.html" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+          <span data-i18n="nav.dashboard">Dashboard</span>
+        </a></li>
+      </ul>
+
+      <div class="nav-end">
+        <label class="sr-only" for="lang-select">Langue / اللغة</label>
+        <select id="lang-select" class="lang-select">
+          <option value="fr">FR</option>
+          <option value="ar">ع</option>
+        </select>
+      </div>
+
+    </nav>
+  </header>
+
+  <main id="main-content">
     <div class="hero">
       <svg class="hero-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
       <div>
