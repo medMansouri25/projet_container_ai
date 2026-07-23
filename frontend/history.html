@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Historique — SmartContainer AI</title>
-  <link rel="stylesheet" href="css/style.css?v=5">
+  <link rel="stylesheet" href="css/style.css?v=6">
   <script defer src="js/nav.js"></script>
   <script type="module" src="js/i18n.js"></script>
 </head>
@@ -72,7 +72,22 @@
 
     <!-- Onglet Scans BIC -->
     <div id="tab-scans" role="tabpanel" aria-labelledby="btn-scans">
+
+      <!-- Barre de recherche scans -->
+      <div class="search-toolbar">
+        <div class="search-field">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="search" class="search-input" id="search-scans"
+                 placeholder="Rechercher un code BIC…" autocomplete="off" aria-label="Rechercher un scan">
+          <button class="search-clear" id="clear-scans" aria-label="Effacer la recherche" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <span class="search-count" id="count-scans"></span>
+      </div>
+
       <p id="empty-scans" class="subtitle" hidden>Aucun scan confirmé. <a href="index.html">Scanner un conteneur →</a></p>
+      <p id="no-result-scans" class="subtitle" hidden>Aucun résultat pour cette recherche.</p>
       <div class="table-wrap">
         <table class="history-table" id="table-scans" hidden>
           <thead>
@@ -91,7 +106,33 @@
 
     <!-- Onglet Dossiers -->
     <div id="tab-dossiers" role="tabpanel" aria-labelledby="btn-dossiers" hidden>
+
+      <!-- Barre de recherche dossiers + filtre -->
+      <div class="search-toolbar">
+        <div class="search-field">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="search" class="search-input" id="search-dossiers"
+                 placeholder="Rechercher…" autocomplete="off" aria-label="Rechercher un dossier">
+          <button class="search-clear" id="clear-dossiers" aria-label="Effacer la recherche" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="filter-pills" role="group" aria-label="Filtrer par champ">
+          <button class="pill pill-active" data-field="all">Tous</button>
+          <button class="pill" data-field="bic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12.5V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6.5"/><path d="M10 6v4"/><path d="M14 6v4"/><path d="M2 12.5h20l-1.5 6a2 2 0 0 1-2 1.5h-13a2 2 0 0 1-2-1.5z"/></svg>
+            Code BIC
+          </button>
+          <button class="pill" data-field="immat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="12"/></svg>
+            Immatriculation
+          </button>
+        </div>
+        <span class="search-count" id="count-dossiers"></span>
+      </div>
+
       <p id="empty-dossiers" class="subtitle" hidden>Aucun dossier de passage. <a href="capture.html">Démarrer une capture →</a></p>
+      <p id="no-result-dossiers" class="subtitle" hidden>Aucun résultat pour cette recherche.</p>
       <div class="table-wrap">
         <table class="history-table" id="table-dossiers" hidden>
           <thead>
@@ -111,6 +152,6 @@
   </main>
 
   <script src="js/config.js"></script>
-  <script src="js/history.js"></script>
+  <script src="js/history.js?v=2"></script>
 </body>
 </html>

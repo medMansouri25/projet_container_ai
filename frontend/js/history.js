@@ -1,4 +1,4 @@
-/* history.js — onglets Scans BIC + Dossiers de passage */
+/* history.js — onglets Scans BIC + Dossiers de passage + recherche/filtre */
 
 const errorAlert = document.getElementById("error-alert");
 
@@ -13,6 +13,10 @@ function fmtDate(iso) {
   const dt = new Date(iso);
   return dt.toLocaleDateString("fr-FR") + " " +
          dt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function normalize(s) {
+  return (s || "").toLowerCase().replace(/\s+/g, "");
 }
 
 /* ── Onglets ── */
@@ -32,24 +36,51 @@ function switchTab(name) {
 document.getElementById("btn-scans").addEventListener("click",    () => switchTab("scans"));
 document.getElementById("btn-dossiers").addEventListener("click", () => switchTab("dossiers"));
 
-/* ── Scans BIC ── */
+/* ══════════════════════════════════════
+   SCANS BIC
+   ══════════════════════════════════════ */
+let allScans = [];
+
 async function loadScans() {
   try {
     const r = await fetch(`${await apiBase()}/api/history`);
     const data = await r.json();
-    renderScans(data.scans || []);
+    allScans = data.scans || [];
+    applyFilterScans();
+    wireEditDelete();
   } catch (err) {
     errorAlert.textContent = "Chargement impossible : " + err.message;
     errorAlert.hidden = false;
   }
 }
 
-function renderScans(scans) {
-  document.getElementById("badge-scans").textContent = scans.length;
-  if (!scans.length) { document.getElementById("empty-scans").hidden = false; return; }
+function applyFilterScans() {
+  const q = normalize(document.getElementById("search-scans").value);
+  const filtered = q ? allScans.filter(s => normalize(s.bic).includes(q)) : allScans;
 
-  const table = document.getElementById("table-scans");
+  document.getElementById("badge-scans").textContent = allScans.length;
+  document.getElementById("clear-scans").hidden = !q;
+
+  const countEl = document.getElementById("count-scans");
+  countEl.textContent = q ? `${filtered.length} / ${allScans.length} résultat(s)` : "";
+
+  const emptyEl    = document.getElementById("empty-scans");
+  const noResultEl = document.getElementById("no-result-scans");
+  const table      = document.getElementById("table-scans");
+
+  if (!allScans.length) {
+    emptyEl.hidden = false; noResultEl.hidden = true; table.hidden = true; return;
+  }
+  emptyEl.hidden = true;
+  if (!filtered.length) {
+    noResultEl.hidden = false; table.hidden = true; return;
+  }
+  noResultEl.hidden = true;
   table.hidden = false;
+  renderScanRows(filtered);
+}
+
+function renderScanRows(scans) {
   document.getElementById("tbody-scans").innerHTML = scans.map(s => `
     <tr id="row-${s.id}">
       <td>${s.image_url ? `<img class="thumb" src="${esc(s.image_url)}" alt="scan">` : "—"}</td>
@@ -67,7 +98,7 @@ function renderScans(scans) {
         : '<span class="badge badge-warn">à vérifier</span>'}</td>
       <td>${fmtDate(s.created_at)}</td>
       <td class="actions">
-        <button type="button" class="btn btn-small btn-secondary" data-edit="${s.id}" title="Modifier le code BIC">
+        <button type="button" class="btn btn-small btn-secondary" data-edit="${s.id}" title="Modifier">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
         </button>
         <button type="button" class="btn btn-small btn-danger" data-delete="${s.id}" data-bic="${esc(s.bic)}" title="Supprimer">
@@ -75,8 +106,11 @@ function renderScans(scans) {
         </button>
       </td>
     </tr>`).join("");
+  wireEditDelete();
+}
 
-  table.querySelectorAll("[data-edit]").forEach(btn => {
+function wireEditDelete() {
+  document.getElementById("tbody-scans").querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.edit;
       const input = document.getElementById(`bic-${id}`);
@@ -86,21 +120,18 @@ function renderScans(scans) {
       document.getElementById(`save-${id}`).hidden = false;
     });
   });
-
-  table.querySelectorAll(".btn-save").forEach(btn => {
+  document.getElementById("tbody-scans").querySelectorAll(".btn-save").forEach(btn => {
     btn.addEventListener("click", async () => {
       const id = btn.id.replace("save-", "");
       const bic = document.getElementById(`bic-${id}`).value;
       await fetch(`${await apiBase()}/api/scans/${id}/update`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bic }),
       });
       window.location.reload();
     });
   });
-
-  table.querySelectorAll("[data-delete]").forEach(btn => {
+  document.getElementById("tbody-scans").querySelectorAll("[data-delete]").forEach(btn => {
     btn.addEventListener("click", async () => {
       if (!confirm(`Supprimer le scan ${btn.dataset.bic} ?`)) return;
       await fetch(`${await apiBase()}/api/scans/${btn.dataset.delete}/delete`, { method: "POST" });
@@ -109,7 +140,21 @@ function renderScans(scans) {
   });
 }
 
-/* ── Dossiers de passage ── */
+/* Recherche scans */
+const searchScans = document.getElementById("search-scans");
+searchScans.addEventListener("input", applyFilterScans);
+document.getElementById("clear-scans").addEventListener("click", () => {
+  searchScans.value = "";
+  applyFilterScans();
+  searchScans.focus();
+});
+
+/* ══════════════════════════════════════
+   DOSSIERS DE PASSAGE
+   ══════════════════════════════════════ */
+let allDossiers  = [];
+let activeField  = "all"; // "all" | "bic" | "immat"
+
 const STATUT_BADGE = {
   en_attente: '<span class="badge badge-warn">En attente</span>',
   valide:     '<span class="badge badge-ok">Validé</span>',
@@ -120,25 +165,55 @@ async function loadDossiers() {
   try {
     const r = await fetch(`${await apiBase()}/api/dossiers?include_entities=1`);
     const data = await r.json();
-    renderDossiers(data.dossiers || []);
+    allDossiers = data.dossiers || [];
+    applyFilterDossiers();
   } catch (err) {
     errorAlert.textContent = "Chargement dossiers impossible : " + err.message;
     errorAlert.hidden = false;
   }
 }
 
-function renderDossiers(dossiers) {
-  document.getElementById("badge-dossiers").textContent = dossiers.length;
-  if (!dossiers.length) { document.getElementById("empty-dossiers").hidden = false; return; }
+function applyFilterDossiers() {
+  const q = normalize(document.getElementById("search-dossiers").value);
 
-  const table = document.getElementById("table-dossiers");
+  const filtered = q ? allDossiers.filter(d => {
+    const inBic   = normalize(d.code_iso).includes(q);
+    const inImmat = normalize(d.immatriculation).includes(q);
+    if (activeField === "bic")   return inBic;
+    if (activeField === "immat") return inImmat;
+    return inBic || inImmat;
+  }) : allDossiers;
+
+  document.getElementById("badge-dossiers").textContent = allDossiers.length;
+  document.getElementById("clear-dossiers").hidden = !q;
+
+  const countEl = document.getElementById("count-dossiers");
+  countEl.textContent = q ? `${filtered.length} / ${allDossiers.length} résultat(s)` : "";
+
+  const emptyEl    = document.getElementById("empty-dossiers");
+  const noResultEl = document.getElementById("no-result-dossiers");
+  const table      = document.getElementById("table-dossiers");
+
+  if (!allDossiers.length) {
+    emptyEl.hidden = false; noResultEl.hidden = true; table.hidden = true; return;
+  }
+  emptyEl.hidden = true;
+  if (!filtered.length) {
+    noResultEl.hidden = false; table.hidden = true; return;
+  }
+  noResultEl.hidden = true;
   table.hidden = false;
+  renderDossierRows(filtered);
+}
+
+function renderDossierRows(dossiers) {
   document.getElementById("tbody-dossiers").innerHTML = dossiers.map(d => {
-    const bic   = d.code_iso     ? `<code class="bic">${esc(d.code_iso)}</code>` : '<span class="subtitle">—</span>';
+    const bic   = d.code_iso
+      ? `<code class="bic">${esc(d.code_iso)}</code>`
+      : '<span class="muted">—</span>';
     const immat = d.immatriculation
       ? `<code dir="ltr" style="unicode-bidi:bidi-override">${esc(d.immatriculation)}</code>`
-      : '<span class="subtitle">—</span>';
-    const complet = d.code_iso && d.immatriculation;
+      : '<span class="muted">—</span>';
     const completerBtn = d.statut === "en_attente"
       ? `<a href="capture.html?dossier_id=${d.id}" class="btn btn-small btn-primary" title="Compléter ce dossier">
            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
@@ -157,8 +232,26 @@ function renderDossiers(dossiers) {
   }).join("");
 }
 
+/* Recherche dossiers */
+const searchDossiers = document.getElementById("search-dossiers");
+searchDossiers.addEventListener("input", applyFilterDossiers);
+document.getElementById("clear-dossiers").addEventListener("click", () => {
+  searchDossiers.value = "";
+  applyFilterDossiers();
+  searchDossiers.focus();
+});
+
+/* Pills de filtre */
+document.querySelectorAll(".filter-pills .pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    document.querySelectorAll(".filter-pills .pill").forEach(p => p.classList.remove("pill-active"));
+    pill.classList.add("pill-active");
+    activeField = pill.dataset.field;
+    applyFilterDossiers();
+  });
+});
+
 /* ── Init ── */
-// Si l'URL contient ?tab=dossiers, on l'ouvre directement
 const urlTab = new URLSearchParams(window.location.search).get("tab");
 if (urlTab === "dossiers") switchTab("dossiers");
 
