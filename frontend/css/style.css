@@ -436,14 +436,12 @@ main.wide { max-width: 1180px; }
   -webkit-overflow-scrolling: touch;
   border-radius: 12px;
 }
-
-/* ── Tablette : icônes seules pour que le sélecteur de langue reste visible */
+/* ── Tablette : texte visible, paddings réduits pour tenir dans la barre ── */
 @media (min-width: 641px) and (max-width: 960px) {
-  .nav-brand-text { display: none; }
-  .nav-link span { display: none; }
-  .nav-link { padding: 0.5rem 0.6rem; }
-  .nav-link svg { width: 19px; height: 19px; }
-  .nav-end { padding-left: 0.6rem; border-left: none; }
+  .nav-brand-text { font-size: 0.82rem; }
+  .nav-link { padding: 0.35rem 0.45rem; font-size: 0.8rem; }
+  .nav-link svg { width: 14px; height: 14px; }
+  .nav-end { padding-left: 0.5rem; }
 }
 
 @media (max-width: 640px) {
