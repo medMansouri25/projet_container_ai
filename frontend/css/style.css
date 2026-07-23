@@ -761,6 +761,36 @@ nav a[aria-current="page"] { color: var(--primary); font-weight: 700; }
   font-weight: 600;
 }
 
+/* ── BIC enrichissement (compagnie, pays, tracker) ──────────── */
+.bic-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+}
+.bic-company { font-weight: 600; color: var(--text); }
+.bic-country { color: var(--muted); }
+.bic-type    { font-size: 0.68rem; padding: 0.1rem 0.4rem; }
+.track-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--primary);
+  font-size: 0.73rem;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #eff6ff;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.track-link svg { width: 11px; height: 11px; flex-shrink: 0; }
+.track-link:hover { background: #dbeafe; border-color: var(--primary); }
+
 /* ── Onglets (historique, etc.) ─────────────────────────────── */
 .tabs {
   display: flex;

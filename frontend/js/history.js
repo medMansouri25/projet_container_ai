@@ -56,7 +56,12 @@ async function loadScans() {
 
 function applyFilterScans() {
   const q = normalize(document.getElementById("search-scans").value);
-  const filtered = q ? allScans.filter(s => normalize(s.bic).includes(q)) : allScans;
+  const filtered = q ? allScans.filter(s => {
+    const info = lookupBIC(s.bic);
+    return normalize(s.bic).includes(q) ||
+           (info && normalize(info.company).includes(q)) ||
+           (info && normalize(info.country).includes(q));
+  }) : allScans;
 
   document.getElementById("badge-scans").textContent = allScans.length;
   document.getElementById("clear-scans").hidden = !q;
@@ -92,6 +97,7 @@ function renderScanRows(scans) {
             Enregistrer
           </button>
         </div>
+        ${bicInfoHTML(s.bic)}
       </td>
       <td>${s.valid
         ? '<span class="badge badge-ok">valide</span>'
@@ -177,7 +183,10 @@ function applyFilterDossiers() {
   const q = normalize(document.getElementById("search-dossiers").value);
 
   const filtered = q ? allDossiers.filter(d => {
-    const inBic   = normalize(d.code_iso).includes(q);
+    const info    = lookupBIC(d.code_iso);
+    const inBic   = normalize(d.code_iso).includes(q) ||
+                    (info && normalize(info.company).includes(q)) ||
+                    (info && normalize(info.country).includes(q));
     const inImmat = normalize(d.immatriculation).includes(q);
     if (activeField === "bic")   return inBic;
     if (activeField === "immat") return inImmat;
@@ -209,7 +218,7 @@ function applyFilterDossiers() {
 function renderDossierRows(dossiers) {
   document.getElementById("tbody-dossiers").innerHTML = dossiers.map(d => {
     const bic   = d.code_iso
-      ? `<code class="bic">${esc(d.code_iso)}</code>`
+      ? `<code class="bic">${esc(d.code_iso)}</code>${bicInfoHTML(d.code_iso)}`
       : '<span class="muted">—</span>';
     const immat = d.immatriculation
       ? `<code dir="ltr" style="unicode-bidi:bidi-override">${esc(d.immatriculation)}</code>`
