@@ -616,6 +616,49 @@ nav a[aria-current="page"] { color: var(--primary); font-weight: 700; }
 }
 .btn-sm:hover { background:var(--primary-dark); }
 
+/* ── Onglets (historique, etc.) ─────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 0.15rem;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 1.2rem;
+}
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: transparent;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  transition: color 0.15s;
+}
+.tab-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn[aria-selected="true"] {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.tab-panel[hidden] { display: none !important; }
+
+/* Section heading */
+.section-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 1.4rem 0 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: 0.78rem;
+}
+
 /* ── Dossier de passage (Mission 6) ── */
 .dossier-header { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem;
                   margin-bottom:.8rem; }

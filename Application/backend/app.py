@@ -340,7 +340,15 @@ def api_history():
 @app.route("/api/dashboard")
 def api_dashboard():
     db.init_db()
-    return jsonify(_compute_stats(db.list_scans(limit=1000)))
+    stats = _compute_stats(db.list_scans(limit=1000))
+    try:
+        db.init_dossier_db()
+        stats["dossiers"] = db.dossier_stats()
+    except Exception as e:
+        print(f"[dashboard] dossier_stats error: {e}")
+        stats["dossiers"] = {"total": 0, "en_attente": 0, "valide": 0,
+                             "abandonne": 0, "complets": 0}
+    return jsonify(stats)
 
 
 @app.route("/api/scans/<int:scan_id>/delete", methods=["POST"])
@@ -418,9 +426,14 @@ def api_dossier_abandon(dossier_id):
 
 @app.route("/api/dossiers", methods=["GET"])
 def api_list_dossiers():
-    """Liste les dossiers, filtrable par ?statut= (ex. en_attente pour l'association différée)."""
+    """Liste les dossiers, filtrable par ?statut= et ?include_entities=1 (avec entités)."""
     statut = request.args.get("statut")
-    dossiers = db.list_dossiers(statut=statut, limit=100)
+    include_entities = request.args.get("include_entities") in ("1", "true")
+    db.init_dossier_db()
+    if include_entities:
+        dossiers = db.list_dossiers_with_entities(statut=statut, limit=100)
+    else:
+        dossiers = db.list_dossiers(statut=statut, limit=100)
     for d in dossiers:
         for k in ("created_at", "validated_at"):
             if d.get(k) is not None and hasattr(d[k], "isoformat"):

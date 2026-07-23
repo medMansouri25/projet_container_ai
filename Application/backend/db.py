@@ -242,6 +242,45 @@ def list_dossiers(statut: str = None, limit: int = 100) -> list:
             return [dict(r) for r in cur.fetchall()]
 
 
+def list_dossiers_with_entities(statut: str = None, limit: int = 100) -> list:
+    """Liste dossiers avec conteneur + camion attachés (JOIN) pour l'historique."""
+    where = "WHERE d.statut = %s " if statut else ""
+    params = (statut, limit) if statut else (limit,)
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"""
+                SELECT d.id, d.statut, d.source, d.voie, d.created_at, d.validated_at,
+                       c.code_iso, cam.immatriculation
+                FROM dossiers d
+                LEFT JOIN conteneurs c   ON c.dossier_id   = d.id
+                LEFT JOIN camions    cam ON cam.dossier_id = d.id
+                {where}ORDER BY d.created_at DESC LIMIT %s
+            """, params)
+            return [dict(r) for r in cur.fetchall()]
+
+
+def dossier_stats() -> dict:
+    """Comptages agrégés des dossiers pour le dashboard."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT statut, COUNT(*) FROM dossiers GROUP BY statut")
+            counts = {row[0]: row[1] for row in cur.fetchall()}
+            total = sum(counts.values())
+            cur.execute("""
+                SELECT COUNT(*) FROM dossiers d
+                JOIN conteneurs c   ON c.dossier_id   = d.id
+                JOIN camions    cam ON cam.dossier_id = d.id
+            """)
+            complets = cur.fetchone()[0]
+        return {
+            "total": total,
+            "en_attente": counts.get("en_attente", 0),
+            "valide": counts.get("valide", 0),
+            "abandonne": counts.get("abandonne", 0),
+            "complets": complets,
+        }
+
+
 def migrate_scans_to_dossiers() -> int:
     """Migre chaque `scan` BIC existant en un dossier 'valide' réduit au
     conteneur (+ sa détection). Retourne le nombre de dossiers créés.

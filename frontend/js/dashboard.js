@@ -21,8 +21,13 @@ async function load() {
 function render(s) {
   document.getElementById("kpi-total").textContent = s.total;
   document.getElementById("kpi-valid").textContent = s.valid_pct + "%";
-  document.getElementById("kpi-conf").textContent = s.avg_conf_pct + "%";
   document.getElementById("kpi-today").textContent = s.today_count;
+
+  const dos = s.dossiers || {};
+  document.getElementById("kpi-dos-total").textContent   = dos.total    ?? "—";
+  document.getElementById("kpi-dos-attente").textContent = dos.en_attente ?? "—";
+  document.getElementById("kpi-dos-valide").textContent  = dos.valide   ?? "—";
+  document.getElementById("kpi-dos-complets").textContent = dos.complets ?? "—";
 
   document.getElementById("bar-chart").innerHTML = s.per_day.map(d => `
     <div class="bar-col" title="${esc(d.label)} : ${d.count} scan(s)">

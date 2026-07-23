@@ -491,3 +491,16 @@ function reset() {
 }
 
 reset();
+
+/* ── Reprise d'un dossier existant via ?dossier_id=X ── */
+(async () => {
+  const id = new URLSearchParams(window.location.search).get("dossier_id");
+  if (!id) return;
+  try {
+    const r = await fetch(`${await window.apiBase()}/api/dossiers/${id}`);
+    if (!r.ok) return;
+    const data = await r.json();
+    state.dossierId = data.id;
+    renderDossier(data);
+  } catch { /* reprise silencieuse si le dossier est inaccessible */ }
+})();
