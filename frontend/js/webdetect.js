@@ -8,13 +8,17 @@ import { parseYoloOutput, nms, bestBox, distanceGuide, scaleBoxToImage, sampleFr
 export const IMG = 640;
 
 // Modèles servis par le VPS Flask (/models/<name>) — cache SW après 1er téléchargement.
-// nc : plaque=1 (immatriculation), conteneur=1 (NumeroBIC, modèle spécialiste bic/)
+// conteneur.onnx = modèle multi-classes (nc=3 : Conteneur/Fruit/NumeroBIC).
+//   bic_class_id=2 → zone NumeroBIC à cibler en priorité dans app.js.
+// bic.onnx        = futur modèle dédié 1 classe (NumeroBIC=0) après trainBIC.bat browser.
+// plaque.onnx     = modèle mono-classe (nc=1 : immatriculation).
 const _VPS = typeof window !== "undefined" && window.API_BASE
   ? window.API_BASE : "https://api.containerai-marsa-maroc.online";
 
 export const MODELS = {
-  plaque:    { url: `${_VPS}/models/plaque.onnx`,    numClasses: 1 },
-  conteneur: { url: `${_VPS}/models/conteneur.onnx`, numClasses: 1 },
+  plaque:    { url: `${_VPS}/models/plaque.onnx`,    numClasses: 1, bicClassId: null },
+  conteneur: { url: `${_VPS}/models/conteneur.onnx`, numClasses: 3, bicClassId: 2    },
+  bic:       { url: `${_VPS}/models/bic.onnx`,       numClasses: 1, bicClassId: 0    },
 };
 
 export async function loadSession(url) {

@@ -106,22 +106,33 @@ async function analyzeLocal() {
     await new Promise(res => img.addEventListener("load", res, { once: true }));
   }
 
-  loading.textContent = "Détection du conteneur (locale)…";
-  const { box } = await detect(
+  loading.textContent = "Détection zone BIC (locale)…";
+  const model = MODELS.conteneur;
+  const { box, boxes } = await detect(
     onnxSession, img, img.naturalWidth, img.naturalHeight,
-    { numClasses: MODELS.conteneur.numClasses, conf: 0.25 }
+    { numClasses: model.numClasses, conf: 0.25 }
   );
-  if (!box) return null; // pas de détection → fallback serveur
+
+  // Préférer la classe NumeroBIC (bicClassId) si disponible dans le modèle multi-classes
+  let targetBox = null;
+  if (model.bicClassId !== null && boxes.length) {
+    const bicBoxes = boxes.filter(b => b.cls === model.bicClassId);
+    if (bicBoxes.length) {
+      targetBox = bicBoxes.reduce((a, b) => b.score > a.score ? b : a);
+    }
+  }
+  if (!targetBox) targetBox = box;  // fallback : meilleure boîte toutes classes
+  if (!targetBox) return null;      // aucune détection → fallback serveur
 
   loading.textContent = "Lecture OCR en cours…";
 
   // Crop avec 5 % de marge autour de la boîte détectée
   const pad = 0.05;
   const W = img.naturalWidth, H = img.naturalHeight;
-  const cx = Math.max(0, box.x - box.w * pad);
-  const cy = Math.max(0, box.y - box.h * pad);
-  const cw = Math.min(W - cx, box.w * (1 + 2 * pad));
-  const ch = Math.min(H - cy, box.h * (1 + 2 * pad));
+  const cx = Math.max(0, targetBox.x - targetBox.w * pad);
+  const cy = Math.max(0, targetBox.y - targetBox.h * pad);
+  const cw = Math.min(W - cx, targetBox.w * (1 + 2 * pad));
+  const ch = Math.min(H - cy, targetBox.h * (1 + 2 * pad));
 
   const cv = document.createElement("canvas");
   cv.width = Math.round(cw); cv.height = Math.round(ch);
@@ -145,7 +156,7 @@ async function analyzeLocal() {
           raw_text: data.raw_text,
           image_url: data.image_url,
           image_name: data.image_name,
-          yolo_confidence: box.score,
+          yolo_confidence: targetBox.score,
         });
       } catch (e) { reject(e); }
     }, "image/jpeg", 0.92);
