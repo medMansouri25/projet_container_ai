@@ -32,11 +32,13 @@ const OCR = {
   plaque:    { endpoint: "/api/scan-plaque", field: "plaque", label: "Immatriculation" },
 };
 
+// conteneur.onnx nc=3 : 0=Conteneur  1=Fruit  2=NumeroBIC
+// bic.onnx      nc=1 : 0=NumeroBIC
 const CLASS_NAMES = {
-  conteneur: ["Code BIC"],
+  conteneur: ["Conteneur", "Fruit", "code bic"],
   plaque:    ["Plaque"],
 };
-const BOX_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#a855f7"];
+const BOX_COLORS = ["#00CC66", "#ef4444", "#FFD700", "#a855f7"];
 
 const showError  = (m) => { const a = el("error-alert"); a.textContent = m; a.hidden = false; };
 const clearError = ()  => { el("error-alert").hidden = true; };
@@ -96,15 +98,35 @@ function drawFrame(source, w, h, boxes = []) {
   for (const box of (Array.isArray(boxes) ? boxes : [])) {
     const color = BOX_COLORS[(box.cls || 0) % BOX_COLORS.length];
     const label = `${names[box.cls || 0] || "?"} ${Math.round((box.score || 0) * 100)}%`;
+
+    // Boîte arrondie
+    const r = lw * 3;
     octx.strokeStyle = color; octx.lineWidth = lw;
-    octx.strokeRect(box.x, box.y, box.w, box.h);
-    octx.font = `bold ${fs}px sans-serif`;
-    const tw = octx.measureText(label).width;
-    const tx = Math.max(0, box.x), ty = Math.max(fs + 6, box.y - 2);
+    octx.beginPath();
+    octx.moveTo(box.x + r, box.y);
+    octx.lineTo(box.x + box.w - r, box.y);
+    octx.quadraticCurveTo(box.x + box.w, box.y, box.x + box.w, box.y + r);
+    octx.lineTo(box.x + box.w, box.y + box.h - r);
+    octx.quadraticCurveTo(box.x + box.w, box.y + box.h, box.x + box.w - r, box.y + box.h);
+    octx.lineTo(box.x + r, box.y + box.h);
+    octx.quadraticCurveTo(box.x, box.y + box.h, box.x, box.y + box.h - r);
+    octx.lineTo(box.x, box.y + r);
+    octx.quadraticCurveTo(box.x, box.y, box.x + r, box.y);
+    octx.closePath();
+    octx.stroke();
+
+    // Label (fond couleur + texte noir)
+    octx.font = `bold ${fs}px monospace`;
+    const tw  = octx.measureText(label).width;
+    const lh  = fs + 6;
+    const lx  = box.x;
+    const ly  = box.y > lh + 4 ? box.y - lh - 2 : box.y + box.h + 2;
     octx.fillStyle = color;
-    octx.fillRect(tx, ty - fs - 4, tw + 10, fs + 6);
-    octx.fillStyle = "#ffffff";
-    octx.fillText(label, tx + 5, ty - 1);
+    octx.beginPath();
+    octx.roundRect(lx, ly, tw + 10, lh, 4);
+    octx.fill();
+    octx.fillStyle = "#000";
+    octx.fillText(label, lx + 5, ly + fs - 1);
   }
 }
 
@@ -135,6 +157,20 @@ async function handlePhoto(file) {
   await photo.decode();
   drawFrame(photo, photo.naturalWidth, photo.naturalHeight, []);
   setGuide("aucun");
+
+  // Détection YOLO locale : dessine les boîtes avant l'OCR
+  try {
+    const s = await session();
+    const { boxes } = await detect(s, photo, photo.naturalWidth, photo.naturalHeight,
+      { numClasses: numClasses(), conf: 0.25 });
+    if (boxes.length) {
+      drawFrame(photo, photo.naturalWidth, photo.naturalHeight, boxes);
+      setGuide("bon");
+    }
+  } catch (e) {
+    console.warn("[capture] YOLO local indisponible :", e.message);
+  }
+
   await runOcr(file);
 }
 
