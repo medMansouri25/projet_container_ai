@@ -51,7 +51,7 @@ def cors(response):
             or request.path.startswith("/uploads/")
             or request.path.startswith("/models/")):
         response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
@@ -422,6 +422,31 @@ def api_dossier_validate(dossier_id):
 def api_dossier_abandon(dossier_id):
     db.abandon_dossier(dossier_id)
     return jsonify({"dossier_id": dossier_id, "statut": "abandonne"})
+
+
+@app.route("/api/dossiers/<int:dossier_id>", methods=["DELETE"])
+def api_delete_dossier(dossier_id):
+    """Supprime définitivement un dossier et toutes ses entités (CASCADE)."""
+    db.init_dossier_db()
+    db.delete_dossier(dossier_id)
+    return jsonify({"deleted": dossier_id})
+
+
+@app.route("/api/dossiers/<int:dossier_id>/update", methods=["POST"])
+def api_update_dossier(dossier_id):
+    """Met à jour le BIC (code_iso) et/ou l'immatriculation d'un dossier."""
+    db.init_dossier_db()
+    data = request.get_json(silent=True) or {}
+    if "code_iso" in data and data["code_iso"]:
+        db.set_conteneur(dossier_id, data["code_iso"].strip().upper())
+    if "immatriculation" in data and data["immatriculation"]:
+        db.set_camion(dossier_id, data["immatriculation"].strip())
+    dossier = db.get_dossier(dossier_id)
+    if dossier:
+        for k in ("created_at", "validated_at"):
+            if dossier.get(k):
+                dossier[k] = dossier[k].isoformat()
+    return jsonify({"dossier_id": dossier_id, "dossier": dossier})
 
 
 @app.route("/api/dossiers", methods=["GET"])

@@ -761,6 +761,8 @@ nav a[aria-current="page"] { color: var(--primary); font-weight: 700; }
   font-weight: 600;
 }
 
+.muted { color: var(--muted); }
+
 /* ── BIC enrichissement (compagnie, pays, tracker) ──────────── */
 .bic-meta {
   display: flex;

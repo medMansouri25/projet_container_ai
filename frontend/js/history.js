@@ -216,7 +216,8 @@ function applyFilterDossiers() {
 }
 
 function renderDossierRows(dossiers) {
-  document.getElementById("tbody-dossiers").innerHTML = dossiers.map(d => {
+  const tbody = document.getElementById("tbody-dossiers");
+  tbody.innerHTML = dossiers.map(d => {
     const bic   = d.code_iso
       ? `<code class="bic">${esc(d.code_iso)}</code>${bicInfoHTML(d.code_iso)}`
       : '<span class="muted">—</span>';
@@ -224,21 +225,106 @@ function renderDossierRows(dossiers) {
       ? `<code dir="ltr" style="unicode-bidi:bidi-override">${esc(d.immatriculation)}</code>`
       : '<span class="muted">—</span>';
     const completerBtn = d.statut === "en_attente"
-      ? `<a href="capture.html?dossier_id=${d.id}" class="btn btn-small btn-primary" title="Compléter ce dossier">
+      ? `<a href="capture.html?dossier_id=${d.id}" class="btn btn-small btn-primary" title="Compléter">
            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
            Compléter
          </a>`
       : "";
     return `
-    <tr>
+    <tr id="dos-row-${d.id}">
       <td><code>#${d.id}</code></td>
       <td>${STATUT_BADGE[d.statut] || esc(d.statut)}</td>
-      <td>${bic}</td>
-      <td>${immat}</td>
+      <td class="dos-bic-cell">${bic}</td>
+      <td class="dos-immat-cell">${immat}</td>
       <td>${fmtDate(d.created_at)}</td>
-      <td class="actions">${completerBtn}</td>
+      <td class="actions">
+        ${completerBtn}
+        <button type="button" class="btn btn-small btn-secondary dos-edit-btn" data-id="${d.id}"
+                data-bic="${esc(d.code_iso || '')}" data-immat="${esc(d.immatriculation || '')}"
+                title="Modifier">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+        </button>
+        <button type="button" class="btn btn-small btn-danger dos-delete-btn" data-id="${d.id}"
+                title="Supprimer définitivement">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </td>
     </tr>`;
   }).join("");
+
+  wireDossierActions(tbody);
+}
+
+function wireDossierActions(tbody) {
+  /* ── Modifier ── */
+  tbody.querySelectorAll(".dos-edit-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id    = btn.dataset.id;
+      const row   = document.getElementById(`dos-row-${id}`);
+      const bicCell   = row.querySelector(".dos-bic-cell");
+      const immatCell = row.querySelector(".dos-immat-cell");
+      const actCell   = row.querySelector(".actions");
+
+      // Afficher les champs éditables en ligne
+      bicCell.innerHTML = `
+        <input class="bic-input editing" id="edit-bic-${id}"
+               value="${esc(btn.dataset.bic)}" maxlength="11"
+               placeholder="XXXX0000000" style="width:9rem">`;
+      immatCell.innerHTML = `
+        <input class="bic-input editing" id="edit-immat-${id}"
+               value="${esc(btn.dataset.immat)}"
+               placeholder="Immatriculation" style="width:9rem">`;
+      actCell.innerHTML = `
+        <button type="button" class="btn btn-small btn-primary dos-save-btn" data-id="${id}">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Enregistrer
+        </button>
+        <button type="button" class="btn btn-small btn-secondary dos-cancel-btn" data-id="${id}">
+          Annuler
+        </button>`;
+
+      actCell.querySelector(".dos-save-btn").addEventListener("click", async () => {
+        const bic   = document.getElementById(`edit-bic-${id}`).value.trim().toUpperCase();
+        const immat = document.getElementById(`edit-immat-${id}`).value.trim();
+        try {
+          const r = await fetch(`${await apiBase()}/api/dossiers/${id}/update`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code_iso: bic || undefined, immatriculation: immat || undefined }),
+          });
+          if (!r.ok) throw new Error((await r.json()).error || "Erreur serveur");
+          // Mettre à jour la donnée en mémoire
+          const dos = allDossiers.find(d => String(d.id) === String(id));
+          if (dos) { if (bic) dos.code_iso = bic; if (immat) dos.immatriculation = immat; }
+          applyFilterDossiers();
+        } catch (err) {
+          errorAlert.textContent = "Modification impossible : " + err.message;
+          errorAlert.hidden = false;
+        }
+      });
+
+      actCell.querySelector(".dos-cancel-btn").addEventListener("click", () => {
+        applyFilterDossiers(); // re-render sans modification
+      });
+    });
+  });
+
+  /* ── Supprimer ── */
+  tbody.querySelectorAll(".dos-delete-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      if (!confirm(`Supprimer définitivement le dossier #${id} ? Cette action est irréversible.`)) return;
+      try {
+        const r = await fetch(`${await apiBase()}/api/dossiers/${id}`, { method: "DELETE" });
+        if (!r.ok) throw new Error((await r.json()).error || "Erreur serveur");
+        allDossiers = allDossiers.filter(d => String(d.id) !== String(id));
+        applyFilterDossiers();
+      } catch (err) {
+        errorAlert.textContent = "Suppression impossible : " + err.message;
+        errorAlert.hidden = false;
+      }
+    });
+  });
 }
 
 /* Recherche dossiers */

@@ -219,6 +219,12 @@ def add_detection(dossier_id: int, type: str, valeur: str, confidence: float = N
         return cur.fetchone()[0]
 
 
+def delete_dossier(dossier_id: int) -> None:
+    """Suppression définitive d'un dossier (CASCADE sur conteneurs/camions/detections)."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("DELETE FROM dossiers WHERE id = %s", (dossier_id,))
+
+
 def abandon_dossier(dossier_id: int) -> None:
     """Passe le dossier au statut 'abandonne' (soft-delete, traçabilité)."""
     with get_conn() as conn, conn.cursor() as cur:
