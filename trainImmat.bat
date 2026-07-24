@@ -61,12 +61,14 @@ echo   ETAPE 2/3 : ENTRAINEMENT ( %EPOCHS% epochs, base %BASE% )
 echo ============================================================
 echo.
 if "%BROWSER_MODE%"=="1" (
+    REM --batch 16 : batch fixe pour eviter le CUDA OOM avec auto-detect (--batch -1)
     %PY% Application\ml\train.py ^
         --dataset "%DATASET%" ^
         --models  "%MODELS%"  ^
         --reports "%REPORTS%" ^
         --base-model "%BASE%" ^
         --epochs %EPOCHS%     ^
+        --batch 16            ^
         --export-onnx         ^
         --onnx-out "%~dp0frontend\models\plaque.onnx"
 ) else (

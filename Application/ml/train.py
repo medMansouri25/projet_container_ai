@@ -130,6 +130,7 @@ def train(
     epochs: int = 20,
     patience: int = 20,
     device: int = 0,
+    batch: int = -1,
     tune: bool = False,
     tune_iterations: int = 30,
     tune_epochs: int = 13,
@@ -175,7 +176,7 @@ def train(
         exist_ok=True,
         workers=2,            # workers=8 a produit un deadlock Windows (epoch 31/40)
         cache="ram",          # images en RAM dès la 1re epoch
-        batch=-1,             # auto : max de VRAM disponible
+        batch=batch,          # -1 = auto (max VRAM) ; passer une valeur fixe si OOM
         cos_lr=True,          # descente cosinus : meilleur final
         amp=True,             # mixed precision FP16 : ~30% plus rapide sur RTX
         optimizer="AdamW",    # plus stable que SGD sur petits datasets
@@ -251,6 +252,8 @@ if __name__ == "__main__":
     parser.add_argument("--base-model", default=DEFAULT_BASE_MODEL)
     parser.add_argument("--epochs",   type=int, default=20)
     parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--batch",    type=int, default=-1,
+                        help="-1 = auto (YOLO detecte le max de VRAM) ; 8/16/32 si OOM")
     parser.add_argument("--device",   type=int, default=0)
     parser.add_argument("--tune",     action="store_true")
     parser.add_argument("--tune-iterations", type=int, default=30)
@@ -270,6 +273,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         patience=args.patience,
         device=args.device,
+        batch=args.batch,
         tune=args.tune,
         tune_iterations=args.tune_iterations,
         tune_epochs=args.tune_epochs,
