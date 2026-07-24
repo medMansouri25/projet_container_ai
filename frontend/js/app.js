@@ -108,6 +108,59 @@ captureBtn.addEventListener("click", () => {
   }, "image/jpeg", 0.92);
 });
 
+/* ── Dessine les boîtes de détection sur une copie de l'image source ── */
+function annotateImage(srcImg, boxes, targetBox) {
+  const W = srcImg.naturalWidth, H = srcImg.naturalHeight;
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  ctx.drawImage(srcImg, 0, 0, W, H);
+
+  const lw = Math.max(3, W / 250);
+  const fs = Math.max(16, W / 45);
+
+  for (const b of boxes) {
+    const isBic = activeModel === MODELS.bic
+      ? true
+      : b.cls === activeModel.bicClassId;
+    const color  = isBic ? "#FFD700" : "#00CC66";
+    const label  = isBic ? "code bic" : "Conteneur";
+    const pct    = Math.round(b.score * 100);
+
+    // Boîte arrondie
+    const r = lw * 3;
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = lw;
+    ctx.beginPath();
+    ctx.moveTo(b.x + r, b.y);
+    ctx.lineTo(b.x + b.w - r, b.y);
+    ctx.quadraticCurveTo(b.x + b.w, b.y, b.x + b.w, b.y + r);
+    ctx.lineTo(b.x + b.w, b.y + b.h - r);
+    ctx.quadraticCurveTo(b.x + b.w, b.y + b.h, b.x + b.w - r, b.y + b.h);
+    ctx.lineTo(b.x + r, b.y + b.h);
+    ctx.quadraticCurveTo(b.x, b.y + b.h, b.x, b.y + b.h - r);
+    ctx.lineTo(b.x, b.y + r);
+    ctx.quadraticCurveTo(b.x, b.y, b.x + r, b.y);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Label (fond couleur + texte noir)
+    ctx.font = `bold ${fs}px monospace`;
+    const txt = `${label}  ${pct}%`;
+    const tw  = ctx.measureText(txt).width;
+    const lh  = fs + 8;
+    const lx  = b.x;
+    const ly  = b.y > lh + 4 ? b.y - lh - 2 : b.y + b.h + 2;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(lx, ly, tw + 14, lh, 4);
+    ctx.fill();
+    ctx.fillStyle = "#000";
+    ctx.fillText(txt, lx + 7, ly + fs - 1);
+  }
+  return cv.toDataURL("image/jpeg", 0.92);
+}
+
 /* ── Détection locale ONNX → OCR VPS sur le crop ── */
 async function analyzeLocal() {
   const img = previewImg;
@@ -132,6 +185,9 @@ async function analyzeLocal() {
   }
   if (!targetBox) targetBox = box;  // fallback : meilleure boîte toutes classes
   if (!targetBox) return null;      // aucune détection → fallback serveur
+
+  // Annoter l'image source avec les boîtes détectées
+  const annotatedUrl = annotateImage(img, boxes, targetBox);
 
   loading.textContent = "Lecture OCR en cours…";
 
@@ -166,6 +222,7 @@ async function analyzeLocal() {
           image_url: data.image_url,
           image_name: data.image_name,
           yolo_confidence: targetBox.score,
+          annotated_url: annotatedUrl,
         });
       } catch (e) { reject(e); }
     }, "image/jpeg", 0.92);
@@ -216,7 +273,7 @@ function renderResult(data) {
   currentScan = data;
   document.getElementById("scanner-section").hidden = true;
   document.getElementById("result-section").hidden = false;
-  document.getElementById("result-img").src = data.image_url;
+  document.getElementById("result-img").src = data.annotated_url || data.image_url || "";
 
   const badges = [];
   if (!data.found) {
