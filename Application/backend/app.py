@@ -351,6 +351,45 @@ def api_dashboard():
     return jsonify(stats)
 
 
+@app.route("/api/ocr-crop", methods=["POST", "OPTIONS"])
+def api_ocr_crop():
+    """Reçoit un crop BIC extrait par le client (ONNX local) et renvoie uniquement
+    l'OCR. Réduit la charge VPS : seul ~5% de l'image transite sur le réseau.
+    Essaie horizontal puis vertical pour couvrir les deux orientations."""
+    if request.method == "OPTIONS":
+        return "", 204
+    file = request.files.get("image")
+    if not file or not file.filename:
+        return jsonify({"error": "image manquante"}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTS:
+        ext = ".jpg"
+    name = f"{uuid.uuid4().hex[:12]}{ext}"
+    image_path = os.path.join(UPLOAD_FOLDER, name)
+    file.save(image_path)
+
+    import cv2
+    crop = cv2.imread(image_path)
+    if crop is None:
+        return jsonify({"error": "image illisible"}), 400
+
+    # Essayer horizontal d'abord, puis vertical si rien trouvé
+    res = ocr.extract_bic(crop, vertical=False, is_zone=True)
+    if not res["bic"]:
+        res_v = ocr.extract_bic(crop, vertical=True, is_zone=True)
+        if res_v["bic"]:
+            res = res_v
+
+    return jsonify({
+        "bic": res["bic"] or "",
+        "valid": res["valid"],
+        "ocr_confidence": res["confidence"],
+        "raw_text": " | ".join(res["raw"]),
+        "image_name": name,
+        "image_url": url_for("uploads", name=name, _external=True),
+    })
+
+
 @app.route("/api/scans/<int:scan_id>/delete", methods=["POST"])
 def api_delete_scan(scan_id):
     db.delete_scan(scan_id)

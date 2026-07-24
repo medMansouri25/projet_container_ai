@@ -1,5 +1,6 @@
-/* app.js — Scanner : upload/caméra → POST /api/scan → panneau résultat.
-   Front statique (Vercel) ; le backend Flask tourne sur le VPS (API_BASE). */
+/* app.js — Scanner BIC : détection ONNX locale + OCR VPS sur le crop seulement.
+   Fallback automatique vers /api/scan (pipeline complet VPS) si ONNX indisponible. */
+import { loadSession, detect, MODELS } from './webdetect.js';
 
 const fileInput   = document.getElementById("file-input");
 const dropzone    = document.getElementById("dropzone");
@@ -18,7 +19,18 @@ const errorAlert  = document.getElementById("error-alert");
 
 let currentFile = null;
 let currentScan = null;
-let stream = null;
+let stream      = null;
+let onnxSession = null;
+
+/* Précharger le modèle ONNX conteneur en arrière-plan dès le chargement */
+(async () => {
+  try {
+    onnxSession = await loadSession(MODELS.conteneur.url);
+    console.log("[scanner] Modèle ONNX chargé — détection locale activée");
+  } catch (e) {
+    console.warn("[scanner] ONNX indisponible, mode serveur :", e.message);
+  }
+})();
 
 function showError(msg) {
   errorAlert.textContent = msg;
@@ -87,18 +99,86 @@ captureBtn.addEventListener("click", () => {
   }, "image/jpeg", 0.92);
 });
 
-/* ── Analyse ── */
+/* ── Détection locale ONNX → OCR VPS sur le crop ── */
+async function analyzeLocal() {
+  const img = previewImg;
+  if (!img.complete || !img.naturalWidth) {
+    await new Promise(res => img.addEventListener("load", res, { once: true }));
+  }
+
+  loading.textContent = "Détection du conteneur (locale)…";
+  const { box } = await detect(
+    onnxSession, img, img.naturalWidth, img.naturalHeight,
+    { numClasses: MODELS.conteneur.numClasses, conf: 0.25 }
+  );
+  if (!box) return null; // pas de détection → fallback serveur
+
+  loading.textContent = "Lecture OCR en cours…";
+
+  // Crop avec 5 % de marge autour de la boîte détectée
+  const pad = 0.05;
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const cx = Math.max(0, box.x - box.w * pad);
+  const cy = Math.max(0, box.y - box.h * pad);
+  const cw = Math.min(W - cx, box.w * (1 + 2 * pad));
+  const ch = Math.min(H - cy, box.h * (1 + 2 * pad));
+
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(cw); cv.height = Math.round(ch);
+  cv.getContext("2d").drawImage(img, cx, cy, cw, ch, 0, 0, cv.width, cv.height);
+
+  return new Promise((resolve, reject) => {
+    cv.toBlob(async blob => {
+      try {
+        const fd = new FormData();
+        fd.append("image", new File([blob], "crop.jpg", { type: "image/jpeg" }));
+        const r = await fetch(`${await apiBase()}/api/ocr-crop`, { method: "POST", body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "Erreur OCR");
+        resolve({
+          found: true,
+          container_found: true,
+          local_detection: true,
+          bic: data.bic || "",
+          valid: data.valid,
+          ocr_confidence: data.ocr_confidence,
+          raw_text: data.raw_text,
+          image_url: data.image_url,
+          image_name: data.image_name,
+          yolo_confidence: box.score,
+        });
+      } catch (e) { reject(e); }
+    }, "image/jpeg", 0.92);
+  });
+}
+
+/* ── Fallback : pipeline complet côté VPS ── */
+async function analyzeServer() {
+  loading.textContent = "Analyse côté serveur… (premier démarrage ~30 s)";
+  const fd = new FormData();
+  fd.append("image", currentFile);
+  const r = await fetch(`${await apiBase()}/api/scan`, { method: "POST", body: fd });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Erreur serveur");
+  return data;
+}
+
+/* ── Bouton Analyser ── */
 analyzeBtn.addEventListener("click", async () => {
   if (!currentFile) return;
   errorAlert.hidden = true;
   loading.hidden = false;
   analyzeBtn.disabled = true;
   try {
-    const fd = new FormData();
-    fd.append("image", currentFile);
-    const r = await fetch(`${await apiBase()}/api/scan`, { method: "POST", body: fd });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || "Erreur serveur");
+    let data = null;
+    if (onnxSession) {
+      try {
+        data = await analyzeLocal();
+      } catch (e) {
+        console.warn("[scanner] Local échoué, fallback serveur :", e.message);
+      }
+    }
+    if (!data) data = await analyzeServer();
     renderResult(data);
   } catch (err) {
     showError("Analyse impossible : " + err.message);
@@ -122,13 +202,16 @@ function renderResult(data) {
   if (!data.found) {
     badges.push(badge("Aucun conteneur détecté", "badge-warn"));
   } else {
+    if (data.local_detection) {
+      badges.push(badge("Détection locale ⚡", "badge-ok"));
+    }
     if (data.container_found) {
-      badges.push(badge(`Conteneur ${Math.round(data.yolo_confidence * 100)}%`));
+      badges.push(badge(`Conteneur ${Math.round((data.yolo_confidence || 0) * 100)} %`));
     } else {
       badges.push(badge("Gros plan — lecture directe de la zone BIC", "badge-info"));
     }
-    if (data.vertical) badges.push(badge("Texte vertical (ROI pivotée)", "badge-info"));
-    if (data.bic_zone_found) badges.push(badge("Zone BIC localisée par le modèle", "badge-info"));
+    if (data.vertical)      badges.push(badge("Texte vertical (ROI pivotée)", "badge-info"));
+    if (data.bic_zone_found) badges.push(badge("Zone BIC localisée", "badge-info"));
     if (data.bic && data.valid && data.corrected) {
       badges.push(badge("Chiffre de contrôle recalculé — vérifiez le code", "badge-warn"));
     } else if (data.bic && data.valid) {
@@ -155,8 +238,8 @@ document.getElementById("confirm-btn").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         bic,
-        ocr_confidence: currentScan ? currentScan.ocr_confidence : null,
-        image_name: currentScan ? currentScan.image_name : null,
+        ocr_confidence: currentScan?.ocr_confidence ?? null,
+        image_name:     currentScan?.image_name     ?? null,
       }),
     });
     if (!r.ok) throw new Error("Erreur serveur");
