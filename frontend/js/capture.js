@@ -64,11 +64,19 @@ el("target-seg").addEventListener("click", (e) => {
 /* ── Modèle (lazy, par cible) ── */
 async function session() {
   if (!state.sessions[state.target]) {
-    const mb = state.target === "conteneur" ? 77 : 37;
-    const cached = await modelIsCached(MODELS[state.target].url);
+    const url    = MODELS[state.target].url;
+    const cached = await modelIsCached(url);
+    let sizeLabel = "";
+    if (!cached) {
+      try {
+        const head = await fetch(url, { method: "HEAD" });
+        const bytes = parseInt(head.headers.get("content-length") || "0", 10);
+        if (bytes > 0) sizeLabel = ` (~${(bytes / 1_048_576).toFixed(1)} Mo)`;
+      } catch { /* taille inconnue, pas bloquant */ }
+    }
     el("model-status").textContent = cached
       ? "chargement depuis le cache…"
-      : `1er téléchargement YOLO (${mb} Mo) — une seule fois…`;
+      : `1er téléchargement YOLO${sizeLabel} — une seule fois…`;
     state.sessions[state.target] = await loadSession(MODELS[state.target].url);
     el("model-status").textContent = "";
   }
