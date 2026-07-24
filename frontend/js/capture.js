@@ -32,13 +32,13 @@ const OCR = {
   plaque:    { endpoint: "/api/scan-plaque", field: "plaque", label: "Immatriculation" },
 };
 
-// conteneur.onnx nc=3 : 0=Conteneur  1=Fruit  2=NumeroBIC
+// conteneur.onnx nc=1 : 0=NumeroBIC (servi par bic/best_v1.onnx côté VPS)
 // bic.onnx      nc=1 : 0=NumeroBIC
 const CLASS_NAMES = {
-  conteneur: ["Conteneur", "Fruit", "code bic"],
+  conteneur: ["code bic"],
   plaque:    ["Plaque"],
 };
-const BOX_COLORS = ["#00CC66", "#ef4444", "#FFD700", "#a855f7"];
+const BOX_COLORS = ["#FFD700", "#a855f7"];
 
 const showError  = (m) => { const a = el("error-alert"); a.textContent = m; a.hidden = false; };
 const clearError = ()  => { el("error-alert").hidden = true; };

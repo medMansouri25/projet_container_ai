@@ -15,9 +15,10 @@ export const IMG = 640;
 const _VPS = typeof window !== "undefined" && window.API_BASE
   ? window.API_BASE : "https://api.containerai-marsa-maroc.online";
 
+// conteneur.onnx est servi par le VPS via bic/best_v1.onnx (nc=1, NumeroBIC uniquement)
 export const MODELS = {
   plaque:    { url: `${_VPS}/models/plaque.onnx`,    numClasses: 1, bicClassId: null },
-  conteneur: { url: `${_VPS}/models/conteneur.onnx`, numClasses: 3, bicClassId: 2    },
+  conteneur: { url: `${_VPS}/models/conteneur.onnx`, numClasses: 1, bicClassId: 0    },
   bic:       { url: `${_VPS}/models/bic.onnx`,       numClasses: 1, bicClassId: 0    },
 };
 
