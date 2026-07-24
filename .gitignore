@@ -75,6 +75,8 @@ Application/datasetEnt/
 
 # Modele specialiste BIC tracke
 !Application/models/bic/best_*.pt
+# Modele BIC navigateur (yolo11n) tracke
+!Application/models/bic_browser/best_*.pt
 
 # Dataset caractere (derive + brut tuteur, volumineux - hors git)
 Application/dataset/char/

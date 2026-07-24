@@ -627,6 +627,8 @@ _ONNX_MAP = {
         os.path.dirname(__file__), "..", "..", "Application", "models", "bic", "best_v1.onnx"),
     "plaque.onnx": os.path.join(
         os.path.dirname(__file__), "..", "..", "Application", "models", "plaque", "best_v1.onnx"),
+    "bic.onnx": os.path.join(
+        os.path.dirname(__file__), "..", "..", "Application", "models", "bic_browser", "best_v1.onnx"),
 }
 
 

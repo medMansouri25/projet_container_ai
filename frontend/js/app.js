@@ -17,18 +17,27 @@ const analyzeBtn  = document.getElementById("analyze-btn");
 const loading     = document.getElementById("loading");
 const errorAlert  = document.getElementById("error-alert");
 
-let currentFile = null;
-let currentScan = null;
-let stream      = null;
-let onnxSession = null;
+let currentFile  = null;
+let currentScan  = null;
+let stream       = null;
+let onnxSession  = null;
+let activeModel  = null;
 
-/* Précharger le modèle ONNX conteneur en arrière-plan dès le chargement */
+/* Précharger le modèle ONNX NumeroBIC dédié (1 classe, yolo11n).
+   Fallback sur conteneur.onnx (multi-classes) si bic.onnx absent du VPS. */
 (async () => {
   try {
-    onnxSession = await loadSession(MODELS.conteneur.url);
-    console.log("[scanner] Modèle ONNX chargé — détection locale activée");
-  } catch (e) {
-    console.warn("[scanner] ONNX indisponible, mode serveur :", e.message);
+    onnxSession = await loadSession(MODELS.bic.url);
+    activeModel = MODELS.bic;
+    console.log("[scanner] Modèle bic.onnx chargé (NumeroBIC dédié)");
+  } catch {
+    try {
+      onnxSession = await loadSession(MODELS.conteneur.url);
+      activeModel = MODELS.conteneur;
+      console.log("[scanner] Fallback conteneur.onnx");
+    } catch (e) {
+      console.warn("[scanner] ONNX indisponible, mode serveur :", e.message);
+    }
   }
 })();
 
@@ -107,7 +116,7 @@ async function analyzeLocal() {
   }
 
   loading.textContent = "Détection zone BIC (locale)…";
-  const model = MODELS.conteneur;
+  const model = activeModel;
   const { box, boxes } = await detect(
     onnxSession, img, img.naturalWidth, img.naturalHeight,
     { numClasses: model.numClasses, conf: 0.25 }
