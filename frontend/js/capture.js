@@ -812,6 +812,9 @@ el("complement-input").addEventListener("change", (e) => {
   const file = e.target.files[0]; if (!file) return;
   e.target.value = "";
   clearError();
+  el("result-section").hidden   = true;
+  el("result-annotated").hidden = true;
+  state.annotatedUrl            = null;
   if (file.type.startsWith("image/")) handlePhoto(file);
   else showError("Type de fichier non supporté : " + file.type);
 });
