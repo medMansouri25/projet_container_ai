@@ -146,7 +146,7 @@ function annotateImage(srcImg, boxes, targetBox) {
 
     // Label (fond couleur + texte noir)
     ctx.font = `bold ${fs}px monospace`;
-    const txt = `${label}  ${pct}%`;
+    const txt = label;
     const tw  = ctx.measureText(txt).width;
     const lh  = fs + 8;
     const lx  = b.x;

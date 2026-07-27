@@ -105,7 +105,7 @@ function drawFrame(source, w, h, boxes = []) {
 
   for (const box of (Array.isArray(boxes) ? boxes : [])) {
     const color = BOX_COLORS[(box.cls || 0) % BOX_COLORS.length];
-    const label = `${names[box.cls || 0] || "?"} ${Math.round((box.score || 0) * 100)}%`;
+    const label = names[box.cls || 0] || "?";
 
     // Boîte arrondie
     const r = lw * 3;
