@@ -37,19 +37,23 @@ const OCR = {
 };
 
 const CLASS_NAMES = {
-  conteneur: ["code bic"],
+  conteneur: ["Conteneur"],
   plaque:    ["Plaque"],
 };
-// Couleur par cible : jaune pour BIC, bleu pour plaque
+// Couleur par cible/modèle
 const BOX_COLORS = {
-  conteneur: ["#FFD700"],
-  plaque:    ["#3b82f6"],
+  conteneur: ["#f97316"],   // orange — zone conteneur
+  plaque:    ["#3b82f6"],   // bleu   — zone plaque
 };
 
 // Config de tous les modèles de détection disponibles
+// conteneur.onnx = détecteur de la caisse conteneur (zone orange)
+// bic.onnx       = détecteur de la zone NumeroBIC  (zone jaune)
+// plaque.onnx    = détecteur de la plaque           (zone bleue)
 const DETECT_CFG = {
-  conteneur: { numClasses: MODELS.conteneur.numClasses, label: "code bic", color: "#FFD700", conf: 0.25 },
-  plaque:    { numClasses: MODELS.plaque.numClasses,    label: "Plaque",   color: "#3b82f6", conf: 0.15 },
+  conteneur: { numClasses: MODELS.conteneur.numClasses, label: "Conteneur", color: "#f97316", conf: 0.25 },
+  bic:       { numClasses: MODELS.bic.numClasses,       label: "code bic",  color: "#FFD700", conf: 0.15 },
+  plaque:    { numClasses: MODELS.plaque.numClasses,     label: "Plaque",    color: "#3b82f6", conf: 0.15 },
 };
 
 // Sessions secondaires (non-cible) chargées en arrière-plan
@@ -242,30 +246,59 @@ async function handlePhoto(file) {
   drawFrame(photo, photo.naturalWidth, photo.naturalHeight, []);
   setGuide("aucun");
 
-  // Détection YOLO locale : dessine les boîtes avant l'OCR
-  // conf abaissé à 0.15 pour l'import photo (moins strict qu'en temps réel)
+  // Détection YOLO locale : dessine toutes les boîtes sur la même image
+  // Pour la cible conteneur : conteneur.onnx (orange) + bic.onnx (jaune) simultanément
+  const W = photo.naturalWidth, H = photo.naturalHeight;
   try {
-    const s = await session();
-    const conf = 0.15;
-    const { box, boxes } = await detect(s, photo, photo.naturalWidth, photo.naturalHeight,
-      { numClasses: numClasses(), conf });
-    if (boxes.length) {
-      const tagged = boxes.map(b => ({
-        ...b,
-        boxColor:  BOX_COLORS[state.target]?.[0] ?? "#FFD700",
-        className: CLASS_NAMES[state.target]?.[0] ?? state.target,
-      }));
-      drawFrame(photo, photo.naturalWidth, photo.naturalHeight, tagged);
+    const s = await session();  // modèle cible
+    const cfg = DETECT_CFG[state.target];
+    const { box, boxes } = await detect(s, photo, W, H,
+      { numClasses: cfg.numClasses, conf: 0.15 });
+
+    // Boîtes du modèle cible taguées avec sa couleur/label
+    let allTagged = boxes.map(b => ({ ...b, boxColor: cfg.color, className: cfg.label }));
+    let bicBox = null;
+
+    if (state.target === "conteneur") {
+      // Lancer bic.onnx en plus pour afficher la zone code bic sur la même image
+      try {
+        if (!state.sessions.bic) {
+          state.sessions.bic = await loadSession(MODELS.bic.url);
+        }
+        const bicCfg = DETECT_CFG.bic;
+        const br = await detect(state.sessions.bic, photo, W, H,
+          { numClasses: bicCfg.numClasses, conf: 0.15 });
+        bicBox = br.box;
+        allTagged = [
+          ...allTagged,
+          ...br.boxes.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label })),
+        ];
+      } catch { /* bic.onnx non disponible */ }
+    }
+
+    if (allTagged.length) {
+      drawFrame(photo, W, H, allTagged);
       setGuide("bon");
-      // Sauvegarder le canvas annoté pour l'afficher dans la section résultat
       state.annotatedUrl = overlay.toDataURL("image/jpeg", 0.92);
     }
-    // Plaque : crop de la zone détectée → OCR sur le crop uniquement
+
+    // Plaque : crop zone → OCR serveur sur la zone uniquement
     if (state.target === "plaque" && box) {
       el("model-status").textContent = "lecture OCR sur la zone plaque…";
       const cropResult = await cropAndOcrPlaque(photo, box);
       el("model-status").textContent = "";
       if (cropResult) { showProposal(cropResult); return; }
+    }
+
+    // Conteneur : crop de la zone code bic (bic.onnx) → OCR précis
+    if (state.target === "conteneur" && bicBox) {
+      const clean = document.createElement("canvas");
+      clean.width = W; clean.height = H;
+      clean.getContext("2d").drawImage(photo, 0, 0);
+      el("model-status").textContent = "lecture OCR sur la zone code bic…";
+      const cropResult = await cropAndOcr(clean, bicBox, "/api/ocr-crop");
+      el("model-status").textContent = "";
+      if (cropResult?.bic) { showProposal(cropResult); return; }
     }
   } catch (e) {
     console.warn("[capture] YOLO local indisponible :", e.message);
@@ -447,10 +480,12 @@ async function doScan() {
   el("scan-bic-row").style.opacity    = "1";
   el("scan-plaque-row").style.opacity = "1";
 
-  // OCR parallèle sur les crops de chaque classe détectée
+  // OCR parallèle : bic.onnx détecte la zone code bic, plaque.onnx la zone plaque.
+  // La boîte conteneur est visuelle uniquement (pas d'OCR sur la caisse).
+  const bicOcrBox = frozenAllBoxes.bic ?? frozenAllBoxes.conteneur ?? null;
   const [bicResult, plaqueResult] = await Promise.all([
-    frozenAllBoxes.conteneur
-      ? cropAndOcr(snap, frozenAllBoxes.conteneur, "/api/ocr-crop")
+    bicOcrBox
+      ? cropAndOcr(snap, bicOcrBox, "/api/ocr-crop")
       : Promise.resolve(null),
     frozenAllBoxes.plaque
       ? cropAndOcr(snap, frozenAllBoxes.plaque, "/api/ocr-plaque-crop")
