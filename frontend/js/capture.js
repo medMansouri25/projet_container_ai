@@ -43,6 +43,23 @@ const BOX_COLORS = {
   plaque:    ["#3b82f6"],
 };
 
+// Config de tous les modèles de détection disponibles
+const DETECT_CFG = {
+  conteneur: { numClasses: MODELS.conteneur.numClasses, label: "code bic", color: "#FFD700", conf: 0.25 },
+  plaque:    { numClasses: MODELS.plaque.numClasses,    label: "Plaque",   color: "#3b82f6", conf: 0.15 },
+};
+
+// Sessions secondaires (non-cible) chargées en arrière-plan
+const extraSessions = {};
+function loadExtraSessions() {
+  Object.keys(DETECT_CFG).forEach(key => {
+    if (key === state.target || extraSessions[key]) return;
+    loadSession(MODELS[key].url)
+      .then(s  => { extraSessions[key] = s; console.log(`[capture] +${key} chargé`); })
+      .catch(() => {});
+  });
+}
+
 const showError  = (m) => { const a = el("error-alert"); a.textContent = m; a.hidden = false; };
 const clearError = ()  => { el("error-alert").hidden = true; };
 const T = (k) => (window.i18n ? window.i18n.t(k) : k);
@@ -108,8 +125,8 @@ function drawFrame(source, w, h, boxes = []) {
 
   const palette = BOX_COLORS[state.target] || ["#FFD700"];
   for (const box of (Array.isArray(boxes) ? boxes : [])) {
-    const color = palette[(box.cls || 0) % palette.length];
-    const label = names[box.cls || 0] || "?";
+    const color = box.boxColor ?? palette[(box.cls || 0) % palette.length];
+    const label = box.className ?? names[box.cls || 0] ?? "?";
 
     // Boîte arrondie
     const r = lw * 3;
@@ -275,6 +292,7 @@ el("mode-realtime").addEventListener("click", async () => {
       if (!state.ocrPending) el("model-status").textContent = "";
     }, 2000);
     state.previewOnly = false;
+    loadExtraSessions();   // charge les autres modèles en arrière-plan
     loopWebcam(s);
   } catch (err) { showError("Caméra inaccessible : " + err.message); }
 });
@@ -294,24 +312,43 @@ function startCameraPreview() {
   tick();
 }
 
-/* Boucle YOLO caméra — ne s'arrête jamais sur détection réussie (mode ANPR). */
+/* Boucle YOLO caméra — tous les modèles chargés tournent en parallèle.
+   Le modèle cible pilote le guide et l'auto-capture ; les autres enrichissent
+   l'affichage (boîtes colorées par classe). */
 async function loopWebcam(s) {
   const tick = async () => {
     if (!state.stream) return;
     if (!video.videoWidth || !video.videoHeight) {
       state.rafId = requestAnimationFrame(tick); return;
     }
-    const conf = state.target === "plaque" ? 0.15 : 0.25;
-    const res = await detect(s, video, video.videoWidth, video.videoHeight,
-                             { numClasses: numClasses(), conf });
-    drawFrame(video, video.videoWidth, video.videoHeight, res.boxes);
-    setGuide(res.guide.state);
-    state.captured    = { source: video, w: video.videoWidth, h: video.videoHeight };
-    state.detectedBox = res.box;
-    state.goodStreak = res.guide.capture ? state.goodStreak + 1 : 0;
+    const W = video.videoWidth, H = video.videoHeight;
+    const cfg = DETECT_CFG[state.target];
+
+    // Modèle cible (guide + auto-capture)
+    const primary = await detect(s, video, W, H, { numClasses: cfg.numClasses, conf: cfg.conf });
+    const primaryBoxes = primary.boxes.map(b => ({
+      ...b, boxColor: cfg.color, className: cfg.label,
+    }));
+
+    // Modèles secondaires (affichage uniquement, non bloquants)
+    const extraBoxes = [];
+    for (const [key, sess] of Object.entries(extraSessions)) {
+      if (!sess) continue;
+      const m = DETECT_CFG[key];
+      try {
+        const r = await detect(sess, video, W, H, { numClasses: m.numClasses, conf: m.conf });
+        r.boxes.forEach(b => extraBoxes.push({ ...b, boxColor: m.color, className: m.label }));
+      } catch { /* modèle secondaire non bloquant */ }
+    }
+
+    drawFrame(video, W, H, [...primaryBoxes, ...extraBoxes]);
+    setGuide(primary.guide.state);
+    state.captured    = { source: video, w: W, h: H };
+    state.detectedBox = primary.box;
+    state.goodStreak  = primary.guide.capture ? state.goodStreak + 1 : 0;
     if (state.goodStreak >= 5) {
       state.goodStreak = 0;
-      autoCapture();   // pas de await : la caméra continue sans attendre l'OCR
+      autoCapture();
     }
     state.rafId = requestAnimationFrame(tick);
   };
