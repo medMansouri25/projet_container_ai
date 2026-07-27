@@ -76,8 +76,8 @@ function setGuide(s) {
   g.className = "g-" + s;
   const MAP = { trop_loin: "trop loin — approchez",
                 trop_pres: "trop près — reculez", bon: "bien cadré ✓" };
-  g.textContent = MAP[s] || "";
-  g.hidden = s === "aucun";
+  g.textContent   = MAP[s] || "";
+  g.style.display = s === "aucun" ? "none" : "";
 }
 
 /* ── Sélecteur d'entité ── */
