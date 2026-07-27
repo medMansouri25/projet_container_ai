@@ -32,13 +32,15 @@ const OCR = {
   plaque:    { endpoint: "/api/scan-plaque", field: "plaque", label: "Immatriculation" },
 };
 
-// conteneur.onnx nc=1 : 0=NumeroBIC (servi par bic/best_v1.onnx côté VPS)
-// bic.onnx      nc=1 : 0=NumeroBIC
 const CLASS_NAMES = {
   conteneur: ["code bic"],
   plaque:    ["Plaque"],
 };
-const BOX_COLORS = ["#FFD700", "#a855f7"];
+// Couleur par cible : jaune pour BIC, bleu pour plaque
+const BOX_COLORS = {
+  conteneur: ["#FFD700"],
+  plaque:    ["#3b82f6"],
+};
 
 const showError  = (m) => { const a = el("error-alert"); a.textContent = m; a.hidden = false; };
 const clearError = ()  => { el("error-alert").hidden = true; };
@@ -103,8 +105,9 @@ function drawFrame(source, w, h, boxes = []) {
   const lw    = Math.max(2, w / 200);
   const fs    = Math.max(13, Math.round(w / 42));
 
+  const palette = BOX_COLORS[state.target] || ["#FFD700"];
   for (const box of (Array.isArray(boxes) ? boxes : [])) {
-    const color = BOX_COLORS[(box.cls || 0) % BOX_COLORS.length];
+    const color = palette[(box.cls || 0) % palette.length];
     const label = names[box.cls || 0] || "?";
 
     // Boîte arrondie
@@ -147,6 +150,33 @@ function flashCapture() {
 
 function showActions() { el("action-row").hidden = false; }
 
+/* ── Crop plaque détectée → OCR serveur sur la zone limitée ── */
+async function cropAndOcrPlaque(img, box) {
+  const pad = 0.06;
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const cx = Math.max(0, box.x - box.w * pad);
+  const cy = Math.max(0, box.y - box.h * pad);
+  const cw = Math.min(W - cx, box.w * (1 + 2 * pad));
+  const ch = Math.min(H - cy, box.h * (1 + 2 * pad));
+
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(cw); cv.height = Math.round(ch);
+  cv.getContext("2d").drawImage(img, cx, cy, cw, ch, 0, 0, cv.width, cv.height);
+
+  return new Promise((resolve) => {
+    cv.toBlob(async blob => {
+      try {
+        const fd = new FormData();
+        fd.append("image", new File([blob], "plate_crop.jpg", { type: "image/jpeg" }));
+        const r = await fetch(`${await window.apiBase()}/api/ocr-plaque-crop`,
+          { method: "POST", body: fd });
+        const data = await r.json();
+        resolve(r.ok && data.plaque ? data : null);
+      } catch { resolve(null); }
+    }, "image/jpeg", 0.92);
+  });
+}
+
 /* ── MODE 1 : Importer un fichier ── */
 el("mode-import").addEventListener("click", () => el("file-input").click());
 
@@ -170,11 +200,18 @@ async function handlePhoto(file) {
   try {
     const s = await session();
     const conf = state.target === "plaque" ? 0.15 : 0.25;
-    const { boxes } = await detect(s, photo, photo.naturalWidth, photo.naturalHeight,
+    const { box, boxes } = await detect(s, photo, photo.naturalWidth, photo.naturalHeight,
       { numClasses: numClasses(), conf });
     if (boxes.length) {
       drawFrame(photo, photo.naturalWidth, photo.naturalHeight, boxes);
       setGuide("bon");
+    }
+    // Plaque : crop de la zone détectée → OCR sur le crop uniquement
+    if (state.target === "plaque" && box) {
+      el("model-status").textContent = "lecture OCR sur la zone plaque…";
+      const cropResult = await cropAndOcrPlaque(photo, box);
+      el("model-status").textContent = "";
+      if (cropResult) { showProposal(cropResult); return; }
     }
   } catch (e) {
     console.warn("[capture] YOLO local indisponible :", e.message);

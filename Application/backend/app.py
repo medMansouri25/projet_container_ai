@@ -390,6 +390,38 @@ def api_ocr_crop():
     })
 
 
+@app.route("/api/ocr-plaque-crop", methods=["POST", "OPTIONS"])
+def api_ocr_plaque_crop():
+    """Reçoit un crop plaque extrait par le client (ONNX local) et renvoie
+    uniquement l'OCR. Miroir de /api/ocr-crop pour les plaques marocaines."""
+    if request.method == "OPTIONS":
+        return "", 204
+    file = request.files.get("image")
+    if not file or not file.filename:
+        return jsonify({"error": "image manquante"}), 400
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTS:
+        ext = ".jpg"
+    name = f"{uuid.uuid4().hex[:12]}{ext}"
+    image_path = os.path.join(UPLOAD_FOLDER, name)
+    file.save(image_path)
+
+    import cv2
+    crop = cv2.imread(image_path)
+    if crop is None:
+        return jsonify({"error": "image illisible"}), 400
+
+    extraction = plaque.extract_plaque(crop)
+    return jsonify({
+        "plaque":         extraction.get("plaque") or "",
+        "valid":          extraction.get("valid", False),
+        "ocr_confidence": extraction.get("confidence"),
+        "raw_text":       " | ".join(extraction.get("raw", [])),
+        "image_name":     name,
+        "image_url":      url_for("uploads", name=name, _external=True),
+    })
+
+
 @app.route("/api/scans/<int:scan_id>/delete", methods=["POST"])
 def api_delete_scan(scan_id):
     db.delete_scan(scan_id)
