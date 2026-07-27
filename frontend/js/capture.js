@@ -28,6 +28,7 @@ const state = {
   dossierId:     null,        // dossier de passage courant (Mission 6)
   allBoxes:      {},          // { conteneur: box|null, plaque: box|null } — dernier frame
   lastFrameBoxes: [],         // toutes les boîtes annotées du dernier frame (re-dessin sur freeze)
+  annotatedUrl:  null,        // data URL du canvas annoté après import photo
 };
 
 const OCR = {
@@ -242,14 +243,22 @@ async function handlePhoto(file) {
   setGuide("aucun");
 
   // Détection YOLO locale : dessine les boîtes avant l'OCR
+  // conf abaissé à 0.15 pour l'import photo (moins strict qu'en temps réel)
   try {
     const s = await session();
-    const conf = state.target === "plaque" ? 0.15 : 0.25;
+    const conf = 0.15;
     const { box, boxes } = await detect(s, photo, photo.naturalWidth, photo.naturalHeight,
       { numClasses: numClasses(), conf });
     if (boxes.length) {
-      drawFrame(photo, photo.naturalWidth, photo.naturalHeight, boxes);
+      const tagged = boxes.map(b => ({
+        ...b,
+        boxColor:  BOX_COLORS[state.target]?.[0] ?? "#FFD700",
+        className: CLASS_NAMES[state.target]?.[0] ?? state.target,
+      }));
+      drawFrame(photo, photo.naturalWidth, photo.naturalHeight, tagged);
       setGuide("bon");
+      // Sauvegarder le canvas annoté pour l'afficher dans la section résultat
+      state.annotatedUrl = overlay.toDataURL("image/jpeg", 0.92);
     }
     // Plaque : crop de la zone détectée → OCR sur le crop uniquement
     if (state.target === "plaque" && box) {
@@ -655,6 +664,13 @@ function showProposal(data) {
     : `<span class="badge badge-warn">${T("badge.check")}</span>`);
   if (data.corrected) badges.push(`<span class="badge badge-warn">${T("badge.recalc")}</span>`);
   el("result-badges").innerHTML = badges.join(" ");
+
+  // Afficher l'image annotée (canvas YOLO) ou l'image serveur si disponible
+  const annotImg = el("result-annotated");
+  const imgSrc = state.annotatedUrl || data.image_url || "";
+  annotImg.hidden = !imgSrc;
+  if (imgSrc) annotImg.src = imgSrc;
+  state.annotatedUrl = null;
 }
 
 /* ── Confirmer → rattacher au dossier de passage ── */
@@ -777,6 +793,8 @@ function reset() {
   state.ocrPending     = 0;
   state.allBoxes       = {};
   state.lastFrameBoxes = [];
+  state.annotatedUrl   = null;
+  el("result-annotated").hidden = true;
   el("result-section").hidden   = true;
   el("detection-log").hidden    = true;
   el("scan-result").hidden      = true;
