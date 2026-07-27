@@ -74,9 +74,10 @@ const T = (k) => (window.i18n ? window.i18n.t(k) : k);
 function setGuide(s) {
   const g = el("guide");
   g.className = "g-" + s;
-  const MAP = { aucun: "aucun objet", trop_loin: "trop loin — approchez",
+  const MAP = { trop_loin: "trop loin — approchez",
                 trop_pres: "trop près — reculez", bon: "bien cadré ✓" };
-  g.textContent = MAP[s] || s;
+  g.textContent = MAP[s] || "";
+  g.hidden = s === "aucun";
 }
 
 /* ── Sélecteur d'entité ── */
