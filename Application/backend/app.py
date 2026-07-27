@@ -606,14 +606,15 @@ def api_passage_confirmer():
 
 def _compute_stats(scans: list) -> dict:
     """KPIs et séries pour le dashboard (calculés côté Python)."""
-    from datetime import date, timedelta
+    from datetime import date, timedelta, datetime, timezone
+    MOROCCO = timezone(timedelta(hours=1))
     from collections import Counter
 
     total = len(scans)
     valid_count = sum(1 for s in scans if ocr.validate_check_digit(s["bic"]))
     confs = [s["ocr_confidence"] for s in scans if s.get("ocr_confidence")]
     avg_conf = sum(confs) / len(confs) if confs else 0.0
-    today = date.today()
+    today = datetime.now(MOROCCO).date()
     today_count = sum(1 for s in scans if s["created_at"].date() == today)
 
     # scans par jour (14 derniers jours)

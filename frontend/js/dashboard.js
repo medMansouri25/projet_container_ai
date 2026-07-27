@@ -54,3 +54,4 @@ function render(s) {
 }
 
 load();
+setInterval(load, 30_000);   // rafraîchissement toutes les 30 s
