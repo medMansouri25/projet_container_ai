@@ -169,8 +169,9 @@ async function handlePhoto(file) {
   // Détection YOLO locale : dessine les boîtes avant l'OCR
   try {
     const s = await session();
+    const conf = state.target === "plaque" ? 0.15 : 0.25;
     const { boxes } = await detect(s, photo, photo.naturalWidth, photo.naturalHeight,
-      { numClasses: numClasses(), conf: 0.25 });
+      { numClasses: numClasses(), conf });
     if (boxes.length) {
       drawFrame(photo, photo.naturalWidth, photo.naturalHeight, boxes);
       setGuide("bon");
