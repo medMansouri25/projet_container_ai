@@ -19,6 +19,7 @@ const state = {
   rafId:        null,
   goodStreak:   0,
   captured:     null,        // {source, w, h}
+  detectedBox:  null,        // meilleure boîte YOLO du dernier frame
   videoMode:    false,
   previewOnly:  false,
   cameraMode:   false,       // true = flux caméra continu (ANPR)
@@ -28,8 +29,8 @@ const state = {
 };
 
 const OCR = {
-  conteneur: { endpoint: "/api/scan",        field: "bic",    label: "Code ISO (BIC)" },
-  plaque:    { endpoint: "/api/scan-plaque", field: "plaque", label: "Immatriculation" },
+  conteneur: { endpoint: "/api/scan",        cropEndpoint: "/api/ocr-crop",         field: "bic",    label: "Code ISO (BIC)" },
+  plaque:    { endpoint: "/api/scan-plaque", cropEndpoint: "/api/ocr-plaque-crop",  field: "plaque", label: "Immatriculation" },
 };
 
 const CLASS_NAMES = {
@@ -300,11 +301,13 @@ async function loopWebcam(s) {
     if (!video.videoWidth || !video.videoHeight) {
       state.rafId = requestAnimationFrame(tick); return;
     }
+    const conf = state.target === "plaque" ? 0.15 : 0.25;
     const res = await detect(s, video, video.videoWidth, video.videoHeight,
-                             { numClasses: numClasses(), conf: 0.25 });
+                             { numClasses: numClasses(), conf });
     drawFrame(video, video.videoWidth, video.videoHeight, res.boxes);
     setGuide(res.guide.state);
-    state.captured = { source: video, w: video.videoWidth, h: video.videoHeight };
+    state.captured    = { source: video, w: video.videoWidth, h: video.videoHeight };
+    state.detectedBox = res.box;
     state.goodStreak = res.guide.capture ? state.goodStreak + 1 : 0;
     if (state.goodStreak >= 5) {
       state.goodStreak = 0;
@@ -326,16 +329,35 @@ async function autoCapture() {
   const { source, w, h } = state.captured;
   const c = document.createElement("canvas"); c.width = w; c.height = h;
   c.getContext("2d").drawImage(source, 0, 0, w, h);
-  const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.92));
 
   const cfg = OCR[state.target];
+  const box = state.detectedBox;
+
+  // Crop de la zone détectée si une boîte YOLO est disponible
+  let blob;
+  let endpoint = cfg.endpoint;
+  if (box) {
+    const pad = 0.06;
+    const cx = Math.max(0, box.x - box.w * pad);
+    const cy = Math.max(0, box.y - box.h * pad);
+    const cw = Math.min(w - cx, box.w * (1 + 2 * pad));
+    const ch = Math.min(h - cy, box.h * (1 + 2 * pad));
+    const cc = document.createElement("canvas");
+    cc.width = Math.round(cw); cc.height = Math.round(ch);
+    cc.getContext("2d").drawImage(c, cx, cy, cw, ch, 0, 0, cc.width, cc.height);
+    blob     = await new Promise((r) => cc.toBlob(r, "image/jpeg", 0.92));
+    endpoint = cfg.cropEndpoint;
+  } else {
+    blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.92));
+  }
+
   state.ocrPending++;
   el("ocr-status").textContent = `OCR en cours… (${state.ocrPending})`;
 
   try {
     const fd = new FormData();
     fd.append("image", blob, "capture.jpg");
-    const r    = await fetch(`${await window.apiBase()}${cfg.endpoint}`, { method: "POST", body: fd });
+    const r    = await fetch(`${await window.apiBase()}${endpoint}`, { method: "POST", body: fd });
     const data = await r.json();
     if (r.ok && data[cfg.field]) addToLog(data);
   } catch { /* échec silencieux — la caméra continue */ }
@@ -555,6 +577,7 @@ function stopLive() {
 function reset() {
   stopLive();
   state.captured      = null;
+  state.detectedBox   = null;
   state.goodStreak    = 0;
   state.previewOnly   = false;
   state.cameraMode    = false;
