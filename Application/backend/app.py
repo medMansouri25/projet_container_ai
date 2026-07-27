@@ -652,11 +652,12 @@ def uploads(name):
 
 
 # Modèles ONNX pour le navigateur (onnxruntime-web).
-# conteneur.onnx → bic/best_v1.onnx  (1 classe NumeroBIC, mAP50 99.5%)
-# plaque.onnx    → plaque/best_v1.onnx (1 classe immatriculation, mAP50 99.5%)
+# conteneur.onnx → conteneur_browser/best_v2.onnx (1 classe caisse conteneur, mAP50 85.7%)
+# plaque.onnx    → plaque/best_v1.onnx (1 classe immatriculation)
+# bic.onnx       → bic_browser/best_v1.onnx (1 classe NumeroBIC)
 _ONNX_MAP = {
     "conteneur.onnx": os.path.join(
-        os.path.dirname(__file__), "..", "..", "Application", "models", "bic", "best_v1.onnx"),
+        os.path.dirname(__file__), "..", "..", "Application", "models", "conteneur_browser", "best_v2.onnx"),
     "plaque.onnx": os.path.join(
         os.path.dirname(__file__), "..", "..", "Application", "models", "plaque", "best_v1.onnx"),
     "bic.onnx": os.path.join(
