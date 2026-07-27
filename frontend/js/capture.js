@@ -272,7 +272,13 @@ async function handlePhoto(file) {
           { numClasses: bicCfg.numClasses, conf: 0.15 });
         bicBox = br.box;
         const bicTagged = br.boxes.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label }));
-        allTagged = [...allTagged, ...bicTagged];
+        if (bicTagged.length) {
+          // bic.onnx a détecté : afficher les deux séries (conteneur + code bic)
+          allTagged = [...allTagged, ...bicTagged];
+        } else {
+          // bic.onnx n'a rien détecté : recolorer les boîtes conteneur en "code bic"
+          allTagged = allTagged.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label }));
+        }
       } catch { /* bic.onnx non disponible, on garde les boîtes conteneur */ }
     }
 
