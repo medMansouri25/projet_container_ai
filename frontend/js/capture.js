@@ -272,7 +272,7 @@ async function handlePhoto(file) {
           { numClasses: bicCfg.numClasses, conf: 0.15 });
         bicBox = br.box;
         const bicTagged = br.boxes.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label }));
-        if (bicTagged.length) allTagged = bicTagged;
+        allTagged = [...allTagged, ...bicTagged];
       } catch { /* bic.onnx non disponible, on garde les boîtes conteneur */ }
     }
 
