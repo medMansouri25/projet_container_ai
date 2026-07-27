@@ -225,8 +225,15 @@
           Valider le passage
         </button>
         <button type="button" class="btn btn-secondary" id="attente-btn" hidden>Mettre en attente</button>
-        <button type="button" class="btn btn-secondary" id="abandon-btn" hidden>Abandonner</button>
-        <button type="button" class="btn btn-secondary" id="nouveau-passage-btn" hidden>+ Nouveau passage</button>
+        <input type="file" id="complement-input" accept="image/*" hidden>
+        <button type="button" class="btn btn-secondary" id="import-complement-btn" hidden>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+          <span id="import-complement-label">Importer plaque</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="scan-complement-btn" hidden>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+          <span id="scan-complement-label">Scanner plaque</span>
+        </button>
       </div>
       <p id="dossier-msg" class="subtitle" style="margin-top:.5rem"></p>
     </section>

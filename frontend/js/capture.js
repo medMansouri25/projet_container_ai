@@ -335,15 +335,14 @@ function loopVideoPreview() {
 /* ── MODE 3 : Caméra temps réel (ANPR continu) ── */
 el("mode-realtime").addEventListener("click", async () => {
   clearError(); reset(); showActions();
+  await startCameraMode();
+});
+
+async function startCameraMode() {
   state.cameraMode = true;
-
-  // Bouton : "Forcer la capture" au lieu de "Capturer cette image"
   el("capture-btn-label").textContent = "Forcer la capture";
-
-  // Afficher le panneau de log dès maintenant (vide)
   el("detection-log").hidden = false;
   el("det-count").textContent = "0";
-
   try {
     state.stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1280 } },
@@ -354,19 +353,17 @@ el("mode-realtime").addEventListener("click", async () => {
     el("stop-btn").hidden    = false;
     el("scan-btn").hidden    = false;
     el("scan-btn").disabled  = true;
-
     startCameraPreview();
-
     const s = await session();
     el("model-status").textContent = "modèle prêt ✓";
     setTimeout(() => {
       if (!state.ocrPending) el("model-status").textContent = "";
     }, 2000);
     state.previewOnly = false;
-    loadExtraSessions();   // charge les autres modèles en arrière-plan
+    loadExtraSessions();
     loopWebcam(s);
   } catch (err) { showError("Caméra inaccessible : " + err.message); }
-});
+}
 
 function startCameraPreview() {
   state.previewOnly = true;
@@ -760,8 +757,12 @@ function renderDossier(dossier) {
 
   el("valider-passage-btn").hidden  = valide || !hasEntity;
   el("attente-btn").hidden          = valide;
-  el("abandon-btn").hidden          = valide;
-  el("nouveau-passage-btn").hidden  = false;
+  const comp      = getComplement();
+  const compLabel = comp === "plaque" ? "Plaque" : "Conteneur";
+  el("import-complement-label").textContent = `Importer ${compLabel}`;
+  el("scan-complement-label").textContent   = `Scanner ${compLabel}`;
+  el("import-complement-btn").hidden = valide;
+  el("scan-complement-btn").hidden   = valide;
   el("dossier-msg").textContent     = valide
     ? `Passage #${dossier.id} enregistré.` : "";
 }
@@ -776,10 +777,11 @@ el("valider-passage-btn").addEventListener("click", async () => {
     if (!r.ok) throw new Error(data.error);
     el("dossier-badge").textContent = "validé";
     el("dossier-badge").className   = "badge badge-ok";
-    el("valider-passage-btn").hidden = true;
-    el("attente-btn").hidden         = true;
-    el("abandon-btn").hidden         = true;
-    el("dossier-msg").textContent    = `Passage #${state.dossierId} enregistré.`;
+    el("valider-passage-btn").hidden   = true;
+    el("attente-btn").hidden           = true;
+    el("import-complement-btn").hidden = true;
+    el("scan-complement-btn").hidden   = true;
+    el("dossier-msg").textContent      = `Passage #${state.dossierId} enregistré.`;
     state.dossierId = null;   // prochain Confirmer = nouveau dossier
   } catch (err) { showError("Validation impossible : " + err.message); }
 });
@@ -790,21 +792,50 @@ el("attente-btn").addEventListener("click", () => {
   el("dossier-section").hidden = true;
 });
 
-el("abandon-btn").addEventListener("click", async () => {
-  if (!state.dossierId) { el("dossier-section").hidden = true; return; }
-  try {
-    await fetch(
-      `${await window.apiBase()}/api/dossiers/${state.dossierId}/abandon`,
-      { method: "POST" });
-  } catch { /* abandon best-effort */ }
-  state.dossierId = null;
-  el("dossier-section").hidden = true;
+/* ── Helpers entité complémentaire ── */
+function getComplement() { return state.target === "conteneur" ? "plaque" : "conteneur"; }
+
+function updateTargetUI(target) {
+  el("target-seg").querySelectorAll("[data-target]").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.target === target)));
+}
+
+/* Importer un fichier pour l'entité complémentaire sans perdre le dossier. */
+el("import-complement-btn").addEventListener("click", () => {
+  state.target = getComplement();
+  updateTargetUI(state.target);
+  el("complement-input").click();
 });
 
-el("nouveau-passage-btn").addEventListener("click", () => {
-  state.dossierId = null;
-  el("dossier-section").hidden = true;
-  el("dossier-msg").textContent = "";
+el("complement-input").addEventListener("change", (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  e.target.value = "";
+  clearError();
+  if (file.type.startsWith("image/")) handlePhoto(file);
+  else showError("Type de fichier non supporté : " + file.type);
+});
+
+/* Scanner en temps réel l'entité complémentaire sans perdre le dossier. */
+el("scan-complement-btn").addEventListener("click", async () => {
+  const savedId = state.dossierId;
+  state.target = getComplement();
+  updateTargetUI(state.target);
+  clearError();
+  stopLive();
+  state.captured = null; state.detectedBox = null; state.goodStreak = 0;
+  state.previewOnly = false; state.cameraMode = false; state.cooldownUntil = 0;
+  state.ocrPending = 0; state.allBoxes = {}; state.lastFrameBoxes = [];
+  state.annotatedUrl = null;
+  state.dossierId = savedId;
+  el("result-annotated").hidden = true;
+  el("result-section").hidden   = true;
+  el("scan-result").hidden      = true;
+  el("scan-btn").hidden         = true;
+  el("capture-btn").hidden      = true;
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  setGuide("aucun");
+  showActions();
+  await startCameraMode();
 });
 
 el("again-btn").addEventListener("click", reset);
