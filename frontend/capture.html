@@ -114,7 +114,55 @@
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
           <span id="capture-btn-label" data-i18n="cap.capture">Capturer cette image</span>
         </button>
+        <button type="button" class="btn btn-primary" id="scan-btn" hidden disabled style="background:var(--c-ok,#22c55e);gap:.4rem">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="8" x2="16" y1="12" y2="12"/><line x1="12" x2="12" y1="8" y2="16"/></svg>
+          Scan
+        </button>
         <button type="button" class="btn btn-secondary" id="stop-btn" data-i18n="cap.stop" hidden>Arrêter</button>
+      </div>
+    </section>
+
+    <!-- Résultat Scan : dossier multi-classes (BIC + Plaque) -->
+    <section class="card" id="scan-result" hidden>
+      <div class="dossier-header">
+        <div class="step-head" style="margin:0">
+          <span class="step-num">3</span>
+          <h2>Dossier de passage</h2>
+        </div>
+        <span id="scan-loading" class="subtitle" style="margin-left:auto;font-style:italic" hidden>OCR en cours…</span>
+      </div>
+
+      <!-- Code BIC -->
+      <div id="scan-bic-row" style="margin:.9rem 0 .6rem">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem">
+          <span style="width:11px;height:11px;border-radius:50%;background:#FFD700;flex-shrink:0;box-shadow:0 0 0 2px rgba(255,215,0,.3)"></span>
+          <label for="scan-bic-input" style="font-weight:600">Code BIC</label>
+          <span id="scan-bic-badge" class="badge"></span>
+        </div>
+        <input type="text" id="scan-bic-input" class="value-input" dir="ltr" placeholder="non détecté" readonly>
+        <p id="scan-bic-raw" class="raw"></p>
+      </div>
+
+      <!-- Plaque d'immatriculation -->
+      <div id="scan-plaque-row" style="margin:.6rem 0">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem">
+          <span style="width:11px;height:11px;border-radius:50%;background:#3b82f6;flex-shrink:0;box-shadow:0 0 0 2px rgba(59,130,246,.3)"></span>
+          <label for="scan-plaque-input" style="font-weight:600">Plaque d'immatriculation</label>
+          <span id="scan-plaque-badge" class="badge"></span>
+        </div>
+        <input type="text" id="scan-plaque-input" class="value-input" dir="ltr" placeholder="non détectée" readonly>
+        <p id="scan-plaque-raw" class="raw"></p>
+      </div>
+
+      <div style="margin-top:1.1rem">
+        <button type="button" class="btn btn-primary" id="scan-confirm-btn">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.8 10A10 10 0 1 1 17 3.3"/><path d="m9 11 3 3L22 4"/></svg>
+          Confirmer le dossier
+        </button>
+        <button type="button" class="btn btn-secondary" id="scan-again-btn">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          Recommencer
+        </button>
       </div>
     </section>
 

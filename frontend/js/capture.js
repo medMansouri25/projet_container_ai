@@ -13,19 +13,21 @@ const video   = el("video");
 const photo   = el("photo");
 
 const state = {
-  target:       "conteneur",
-  sessions:     {},
-  stream:       null,
-  rafId:        null,
-  goodStreak:   0,
-  captured:     null,        // {source, w, h}
-  detectedBox:  null,        // meilleure boîte YOLO du dernier frame
-  videoMode:    false,
-  previewOnly:  false,
-  cameraMode:   false,       // true = flux caméra continu (ANPR)
-  cooldownUntil: 0,          // ms : auto-capture inhibée jusqu'à ce timestamp
-  ocrPending:   0,           // nb de requêtes OCR en vol
-  dossierId:    null,        // dossier de passage courant (Mission 6)
+  target:        "conteneur",
+  sessions:      {},
+  stream:        null,
+  rafId:         null,
+  goodStreak:    0,
+  captured:      null,        // {source, w, h}
+  detectedBox:   null,        // meilleure boîte YOLO du dernier frame
+  videoMode:     false,
+  previewOnly:   false,
+  cameraMode:    false,       // true = flux caméra continu (ANPR)
+  cooldownUntil: 0,           // ms : auto-capture inhibée jusqu'à ce timestamp
+  ocrPending:    0,           // nb de requêtes OCR en vol
+  dossierId:     null,        // dossier de passage courant (Mission 6)
+  allBoxes:      {},          // { conteneur: box|null, plaque: box|null } — dernier frame
+  lastFrameBoxes: [],         // toutes les boîtes annotées du dernier frame (re-dessin sur freeze)
 };
 
 const OCR = {
@@ -168,6 +170,31 @@ function flashCapture() {
 
 function showActions() { el("action-row").hidden = false; }
 
+/* ── Crop générique depuis un canvas → OCR serveur ── */
+async function cropAndOcr(srcCanvas, box, endpoint) {
+  const pad = 0.06;
+  const W = srcCanvas.width, H = srcCanvas.height;
+  const cx = Math.max(0, box.x - box.w * pad);
+  const cy = Math.max(0, box.y - box.h * pad);
+  const cw = Math.min(W - cx, box.w * (1 + 2 * pad));
+  const ch = Math.min(H - cy, box.h * (1 + 2 * pad));
+  const cc = document.createElement("canvas");
+  cc.width  = Math.round(cw);
+  cc.height = Math.round(ch);
+  cc.getContext("2d").drawImage(srcCanvas, cx, cy, cw, ch, 0, 0, cc.width, cc.height);
+  return new Promise(resolve => {
+    cc.toBlob(async blob => {
+      try {
+        const fd = new FormData();
+        fd.append("image", new File([blob], "crop.jpg", { type: "image/jpeg" }));
+        const r = await fetch(`${await window.apiBase()}${endpoint}`, { method: "POST", body: fd });
+        const data = await r.json();
+        resolve(r.ok ? data : null);
+      } catch { resolve(null); }
+    }, "image/jpeg", 0.92);
+  });
+}
+
 /* ── Crop plaque détectée → OCR serveur sur la zone limitée ── */
 async function cropAndOcrPlaque(img, box) {
   const pad = 0.06;
@@ -283,6 +310,8 @@ el("mode-realtime").addEventListener("click", async () => {
     await video.play();
     el("capture-btn").hidden = false;
     el("stop-btn").hidden    = false;
+    el("scan-btn").hidden    = false;
+    el("scan-btn").disabled  = true;
 
     startCameraPreview();
 
@@ -314,7 +343,9 @@ function startCameraPreview() {
 
 /* Boucle YOLO caméra — tous les modèles chargés tournent en parallèle.
    Le modèle cible pilote le guide et l'auto-capture ; les autres enrichissent
-   l'affichage (boîtes colorées par classe). */
+   l'affichage (boîtes colorées par classe).
+   state.allBoxes et state.lastFrameBoxes sont mis à jour à chaque frame
+   pour que doScan() puisse les consommer instantanément. */
 async function loopWebcam(s) {
   const tick = async () => {
     if (!state.stream) return;
@@ -329,8 +360,9 @@ async function loopWebcam(s) {
     const primaryBoxes = primary.boxes.map(b => ({
       ...b, boxColor: cfg.color, className: cfg.label,
     }));
+    state.allBoxes[state.target] = primary.box;
 
-    // Modèles secondaires (affichage uniquement, non bloquants)
+    // Modèles secondaires (affichage + suivi des boîtes pour Scan)
     const extraBoxes = [];
     for (const [key, sess] of Object.entries(extraSessions)) {
       if (!sess) continue;
@@ -338,10 +370,15 @@ async function loopWebcam(s) {
       try {
         const r = await detect(sess, video, W, H, { numClasses: m.numClasses, conf: m.conf });
         r.boxes.forEach(b => extraBoxes.push({ ...b, boxColor: m.color, className: m.label }));
-      } catch { /* modèle secondaire non bloquant */ }
+        state.allBoxes[key] = r.box;
+      } catch {
+        state.allBoxes[key] = null;
+      }
     }
 
-    drawFrame(video, W, H, [...primaryBoxes, ...extraBoxes]);
+    state.lastFrameBoxes = [...primaryBoxes, ...extraBoxes];
+    drawFrame(video, W, H, state.lastFrameBoxes);
+    updateScanBtn();
     setGuide(primary.guide.state);
     state.captured    = { source: video, w: W, h: H };
     state.detectedBox = primary.box;
@@ -353,6 +390,83 @@ async function loopWebcam(s) {
     state.rafId = requestAnimationFrame(tick);
   };
   tick();
+}
+
+/* Active le bouton Scan dès qu'au moins une classe est détectée. */
+function updateScanBtn() {
+  const btn = el("scan-btn");
+  if (!btn) return;
+  const detected = Object.values(state.allBoxes).some(b => b !== null);
+  btn.disabled = !detected;
+  btn.style.opacity = detected ? "1" : "0.5";
+}
+
+/* Fige la caméra, lance l'OCR ciblé sur chaque boîte, affiche le dossier. */
+async function doScan() {
+  if (!state.cameraMode || !video.videoWidth) return;
+
+  // Snapshot propre AVANT d'arrêter le stream (sans annotations dessinées)
+  const snap = document.createElement("canvas");
+  snap.width  = video.videoWidth;
+  snap.height = video.videoHeight;
+  snap.getContext("2d").drawImage(video, 0, 0);
+
+  const frozenBoxes    = [...state.lastFrameBoxes];
+  const frozenAllBoxes = { ...state.allBoxes };
+
+  // Figer
+  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+  if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+  state.cameraMode = false;
+  el("scan-btn").hidden    = true;
+  el("capture-btn").hidden = true;
+  el("stop-btn").hidden    = true;
+
+  // Redessiner le frame figé avec les boîtes sur l'overlay
+  drawFrame(snap, snap.width, snap.height, frozenBoxes);
+
+  // Préparer la section résultat
+  const scanResult = el("scan-result");
+  scanResult.hidden = false;
+  el("scan-loading").hidden = false;
+  el("scan-bic-input").value       = "";
+  el("scan-bic-badge").textContent = "";
+  el("scan-bic-raw").textContent   = "";
+  el("scan-plaque-input").value       = "";
+  el("scan-plaque-badge").textContent = "";
+  el("scan-plaque-raw").textContent   = "";
+  el("scan-bic-row").style.opacity    = "1";
+  el("scan-plaque-row").style.opacity = "1";
+
+  // OCR parallèle sur les crops de chaque classe détectée
+  const [bicResult, plaqueResult] = await Promise.all([
+    frozenAllBoxes.conteneur
+      ? cropAndOcr(snap, frozenAllBoxes.conteneur, "/api/ocr-crop")
+      : Promise.resolve(null),
+    frozenAllBoxes.plaque
+      ? cropAndOcr(snap, frozenAllBoxes.plaque, "/api/ocr-plaque-crop")
+      : Promise.resolve(null),
+  ]);
+
+  el("scan-loading").hidden = true;
+
+  if (bicResult) {
+    el("scan-bic-input").value       = bicResult.bic || "";
+    el("scan-bic-badge").textContent = bicResult.valid ? "BIC valide ✓" : "à vérifier";
+    el("scan-bic-badge").className   = "badge " + (bicResult.valid ? "badge-ok" : "badge-warn");
+    el("scan-bic-raw").textContent   = bicResult.raw_text ? "OCR brut : " + bicResult.raw_text : "";
+  } else {
+    el("scan-bic-row").style.opacity = "0.4";
+  }
+
+  if (plaqueResult) {
+    el("scan-plaque-input").value       = plaqueResult.plaque || "";
+    el("scan-plaque-badge").textContent = plaqueResult.valid ? "valide ✓" : "à vérifier";
+    el("scan-plaque-badge").className   = "badge " + (plaqueResult.valid ? "badge-ok" : "badge-warn");
+    el("scan-plaque-raw").textContent   = plaqueResult.raw_text ? "OCR brut : " + plaqueResult.raw_text : "";
+  } else {
+    el("scan-plaque-row").style.opacity = "0.4";
+  }
 }
 
 /* ── Auto-capture ANPR : snapshot silencieux → OCR en arrière-plan ── */
@@ -446,6 +560,47 @@ el("log-list") && el("log-list").addEventListener("click", (e) => {
   el("value-input").value = btn.dataset.value;
   doConfirm();
 });
+
+/* ── Bouton Scan ── */
+el("scan-btn").addEventListener("click", doScan);
+
+/* ── Confirmer le dossier complet (BIC + Plaque en séquence) ── */
+el("scan-confirm-btn").addEventListener("click", async () => {
+  const bic    = el("scan-bic-input").value.trim();
+  const plaque = el("scan-plaque-input").value.trim();
+  if (!bic && !plaque) return;
+  el("scan-confirm-btn").disabled = true;
+  clearError();
+  try {
+    const base = await window.apiBase();
+    if (bic) {
+      const r    = await fetch(`${base}/api/passage/confirmer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: "conteneur", valeur: bic }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Erreur serveur");
+      state.dossierId = data.dossier_id;
+      renderDossier(data.dossier);
+    }
+    if (plaque) {
+      const r    = await fetch(`${base}/api/passage/confirmer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: "plaque", valeur: plaque, dossier_id: state.dossierId || undefined }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Erreur serveur");
+      state.dossierId = data.dossier_id;
+      renderDossier(data.dossier);
+    }
+  } catch (err) {
+    showError("Rattachement impossible : " + err.message);
+  } finally {
+    el("scan-confirm-btn").disabled = false;
+  }
+});
+
+el("scan-again-btn").addEventListener("click", reset);
 
 /* ── Bouton Capturer (dual-mode) ── */
 el("capture-btn").addEventListener("click", () => {
@@ -613,21 +768,27 @@ function stopLive() {
 
 function reset() {
   stopLive();
-  state.captured      = null;
-  state.detectedBox   = null;
-  state.goodStreak    = 0;
-  state.previewOnly   = false;
-  state.cameraMode    = false;
-  state.cooldownUntil = 0;
-  state.ocrPending    = 0;
-  el("result-section").hidden  = true;
-  el("detection-log").hidden   = true;
-  el("capture-btn").hidden     = true;
-  el("action-row").hidden      = true;
-  el("log-list").innerHTML     = "";
-  el("det-count").textContent  = "0";
-  el("ocr-status").textContent = "";
+  state.captured       = null;
+  state.detectedBox    = null;
+  state.goodStreak     = 0;
+  state.previewOnly    = false;
+  state.cameraMode     = false;
+  state.cooldownUntil  = 0;
+  state.ocrPending     = 0;
+  state.allBoxes       = {};
+  state.lastFrameBoxes = [];
+  el("result-section").hidden   = true;
+  el("detection-log").hidden    = true;
+  el("scan-result").hidden      = true;
+  el("scan-btn").hidden         = true;
+  el("capture-btn").hidden      = true;
+  el("action-row").hidden       = true;
+  el("log-list").innerHTML      = "";
+  el("det-count").textContent   = "0";
+  el("ocr-status").textContent  = "";
   el("capture-btn-label").textContent = "Capturer cette image";
+  el("scan-bic-input").value    = "";
+  el("scan-plaque-input").value = "";
   octx.clearRect(0, 0, overlay.width, overlay.height);
   setGuide("aucun");
 }
