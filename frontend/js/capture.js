@@ -261,25 +261,21 @@ async function handlePhoto(file) {
     let bicBox = null;
 
     if (state.target === "conteneur") {
-      // bic.onnx détecte la zone NumeroBIC — si détection, ses boîtes remplacent
-      // celles de conteneur.onnx (évite le label "Conteneur" sur la zone BIC)
+      const bicCfg = DETECT_CFG.bic;
       try {
         if (!state.sessions.bic) {
           state.sessions.bic = await loadSession(MODELS.bic.url);
         }
-        const bicCfg = DETECT_CFG.bic;
         const br = await detect(state.sessions.bic, photo, W, H,
           { numClasses: bicCfg.numClasses, conf: 0.15 });
         bicBox = br.box;
         const bicTagged = br.boxes.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label }));
-        if (bicTagged.length) {
-          // bic.onnx a détecté : afficher les deux séries (conteneur + code bic)
-          allTagged = [...allTagged, ...bicTagged];
-        } else {
-          // bic.onnx n'a rien détecté : recolorer les boîtes conteneur en "code bic"
-          allTagged = allTagged.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label }));
-        }
-      } catch { /* bic.onnx non disponible, on garde les boîtes conteneur */ }
+        if (bicTagged.length) allTagged = [...allTagged, ...bicTagged];
+      } catch { /* bic.onnx non disponible */ }
+      // Toujours recolorer les boîtes sans label "code bic" en jaune
+      allTagged = allTagged.map(b =>
+        b.className === bicCfg.label ? b : { ...b, boxColor: bicCfg.color, className: bicCfg.label }
+      );
     }
 
     if (allTagged.length) {
