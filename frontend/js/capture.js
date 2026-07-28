@@ -232,12 +232,32 @@ async function cropAndOcr(srcCanvas, box, endpoint) {
   });
 }
 
+/* ── Fusion des boîtes qui se chevauchent (doublons de détection) ──
+   Garde la boîte au meilleur score quand deux détections se recouvrent (IoU). */
+function dedupeBoxes(boxes, iouThr = 0.5) {
+  const sorted = [...boxes].sort((a, b) => (b.score || 0) - (a.score || 0));
+  const kept = [];
+  for (const b of sorted) {
+    const dup = kept.some(k => {
+      const x1 = Math.max(b.x, k.x),         y1 = Math.max(b.y, k.y);
+      const x2 = Math.min(b.x + b.w, k.x + k.w), y2 = Math.min(b.y + b.h, k.y + k.h);
+      const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+      const union = b.w * b.h + k.w * k.h - inter;
+      return union > 0 && inter / union > iouThr;
+    });
+    if (!dup) kept.push(b);
+  }
+  return kept;
+}
+
 /* ── OCR sur plusieurs zones (multi-conteneurs) → liste de propositions ──
-   Traite chaque boîte en parallèle (concurrence limitée) et affiche une carte
-   par code lu dans le log de détections. Retourne le nombre de codes trouvés. */
+   SÉQUENTIEL : chaque OCR a un budget CPU de ~25 s sur le VPS ; des requêtes
+   simultanées se partagent le CPU, dépassent toutes leur budget et échouent
+   toutes. Une par une, chacune garde le CPU entier. Affiche une carte par
+   code lu. Retourne le nombre de codes trouvés. */
 async function ocrAllBoxes(srcCanvas, boxes, endpoint, field) {
   const MAX_BOXES = 20;           // garde-fou : au plus 20 zones OCR par image
-  const CONCURRENCY = 4;          // 4 requêtes OCR simultanées max
+  const CONCURRENCY = 1;          // séquentiel — voir commentaire ci-dessus
   const sorted = [...boxes].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, MAX_BOXES);
 
   // Préparer le log (multi-cartes)
@@ -246,7 +266,7 @@ async function ocrAllBoxes(srcCanvas, boxes, endpoint, field) {
   el("detection-log").hidden = false;
   document.querySelector("#detection-log h2").textContent = "Codes détectés";
 
-  let found = 0;
+  let found = 0, done = 0, errors = 0;
   const seen = new Set();          // évite les doublons de code
   let idx = 0;
   el("ocr-status").textContent = `OCR en cours… (0/${sorted.length})`;
@@ -255,18 +275,23 @@ async function ocrAllBoxes(srcCanvas, boxes, endpoint, field) {
     while (idx < sorted.length) {
       const my = idx++;
       const data = await cropAndOcr(srcCanvas, sorted[my], endpoint);
+      if (data === null) errors++;                 // requête serveur en échec
       const value = data && data[field];
       if (value && !seen.has(value)) {
         seen.add(value);
         found++;
         addProposalCard(value, data);
       }
-      el("ocr-status").textContent = `OCR en cours… (${my + 1}/${sorted.length})`;
+      done++;
+      el("ocr-status").textContent = `OCR en cours… (${done}/${sorted.length})`;
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   el("ocr-status").textContent = found
-    ? `${found} code(s) détecté(s)` : "Aucun code lisible";
+    ? `${found} code(s) détecté(s) sur ${sorted.length} zone(s)`
+    : (errors === sorted.length
+        ? "Serveur OCR injoignable ou en erreur"
+        : "Aucun code lisible");
   return found;
 }
 
@@ -359,16 +384,10 @@ async function handlePhoto(file) {
         const br = await detect(state.sessions.bic, photo, W, H,
           { numClasses: bicCfg.numClasses, conf: 0.15 });
         bicBox   = br.box;
-        bicBoxes = br.boxes;
-        const bicTagged = br.boxes.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label }));
+        bicBoxes = dedupeBoxes(br.boxes);   // fusionner les doublons qui se chevauchent
+        const bicTagged = bicBoxes.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label }));
         if (bicTagged.length) allTagged = [...allTagged, ...bicTagged];
       } catch { /* bic.onnx non disponible */ }
-      // Toujours recolorer les boîtes sans label "code bic" en jaune
-      allTagged = allTagged.map(b =>
-        b.className === bicCfg.label ? b : { ...b, boxColor: bicCfg.color, className: bicCfg.label }
-      );
-      // Fallback : si bic.onnx n'a rien trouvé, utiliser les boîtes du modèle cible
-      if (!bicBoxes.length) bicBoxes = boxes;
     }
 
     if (allTagged.length) {

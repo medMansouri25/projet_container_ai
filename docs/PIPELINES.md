@@ -43,9 +43,11 @@ Sur import d'image dans `capture.html` (cible conteneur), la détection tourne
 
 ```
 bic.onnx (local, seuil 0.15) → N zones code bic
-  │   tri par score, plafond 20 zones, 4 requêtes OCR simultanées max
+  │   déduplication IoU > 0.5, tri par score, plafond 20 zones
   ▼
-POST /api/ocr-crop × N (crops individuels)
+POST /api/ocr-crop × N — SÉQUENTIEL (une requête à la fois)
+  │   [CONTRAINTE VPS] chaque OCR a ~25 s de budget CPU ; des requêtes
+  │   simultanées se partagent le CPU et dépassent TOUTES leur budget
   ▼
 Déduplication par code lu → une carte par code dans « Codes détectés »
   ▼
@@ -53,6 +55,7 @@ Validation humaine : bouton Confirmer par carte           [invariant I3]
 ```
 
 Si aucun code lisible → repli sur l'OCR de la meilleure zone (comportement V1).
+Le statut distingue « Aucun code lisible » de « Serveur OCR injoignable ».
 Cas d'usage : photos de parc avec plusieurs conteneurs empilés visibles.
 
 ## Pipeline plaque (service Plaque — pipeline construit 2026-07-18)
