@@ -232,6 +232,64 @@ async function cropAndOcr(srcCanvas, box, endpoint) {
   });
 }
 
+/* ── OCR sur plusieurs zones (multi-conteneurs) → liste de propositions ──
+   Traite chaque boîte en parallèle (concurrence limitée) et affiche une carte
+   par code lu dans le log de détections. Retourne le nombre de codes trouvés. */
+async function ocrAllBoxes(srcCanvas, boxes, endpoint, field) {
+  const MAX_BOXES = 20;           // garde-fou : au plus 20 zones OCR par image
+  const CONCURRENCY = 4;          // 4 requêtes OCR simultanées max
+  const sorted = [...boxes].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, MAX_BOXES);
+
+  // Préparer le log (multi-cartes)
+  el("log-list").innerHTML = "";
+  el("det-count").textContent = "0";
+  el("detection-log").hidden = false;
+  document.querySelector("#detection-log h2").textContent = "Codes détectés";
+
+  let found = 0;
+  const seen = new Set();          // évite les doublons de code
+  let idx = 0;
+  el("ocr-status").textContent = `OCR en cours… (0/${sorted.length})`;
+
+  async function worker() {
+    while (idx < sorted.length) {
+      const my = idx++;
+      const data = await cropAndOcr(srcCanvas, sorted[my], endpoint);
+      const value = data && data[field];
+      if (value && !seen.has(value)) {
+        seen.add(value);
+        found++;
+        addProposalCard(value, data);
+      }
+      el("ocr-status").textContent = `OCR en cours… (${my + 1}/${sorted.length})`;
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  el("ocr-status").textContent = found
+    ? `${found} code(s) détecté(s)` : "Aucun code lisible";
+  return found;
+}
+
+/* Ajoute une carte « code détecté » dans le log, avec bouton Confirmer. */
+function addProposalCard(value, data) {
+  const list  = el("log-list");
+  const count = list.children.length + 1;
+  el("det-count").textContent = count;
+  const badges = [
+    data.valid
+      ? `<span class="badge badge-ok">${T("badge.valid")}</span>`
+      : `<span class="badge badge-warn">${T("badge.check")}</span>`,
+    data.corrected ? `<span class="badge badge-warn">${T("badge.recalc")}</span>` : "",
+  ].join("");
+  const card = document.createElement("div");
+  card.className = `det-card ${data.valid ? "det-ok" : "det-warn"}`;
+  card.innerHTML =
+    `<span class="det-val">${value}</span>` +
+    `<span class="det-badges">${badges}</span>` +
+    `<button class="btn btn-sm det-confirm" data-value="${value}">Confirmer</button>`;
+  list.prepend(card);
+}
+
 /* ── Crop plaque détectée → OCR serveur sur la zone limitée ── */
 async function cropAndOcrPlaque(img, box) {
   const pad = 0.06;
@@ -290,6 +348,7 @@ async function handlePhoto(file) {
     // Boîtes du modèle cible taguées avec sa couleur/label
     let allTagged = boxes.map(b => ({ ...b, boxColor: cfg.color, className: cfg.label }));
     let bicBox = null;
+    let bicBoxes = [];   // TOUTES les zones code bic détectées (multi-conteneurs)
 
     if (state.target === "conteneur") {
       const bicCfg = DETECT_CFG.bic;
@@ -299,7 +358,8 @@ async function handlePhoto(file) {
         }
         const br = await detect(state.sessions.bic, photo, W, H,
           { numClasses: bicCfg.numClasses, conf: 0.15 });
-        bicBox = br.box;
+        bicBox   = br.box;
+        bicBoxes = br.boxes;
         const bicTagged = br.boxes.map(b => ({ ...b, boxColor: bicCfg.color, className: bicCfg.label }));
         if (bicTagged.length) allTagged = [...allTagged, ...bicTagged];
       } catch { /* bic.onnx non disponible */ }
@@ -307,6 +367,8 @@ async function handlePhoto(file) {
       allTagged = allTagged.map(b =>
         b.className === bicCfg.label ? b : { ...b, boxColor: bicCfg.color, className: bicCfg.label }
       );
+      // Fallback : si bic.onnx n'a rien trouvé, utiliser les boîtes du modèle cible
+      if (!bicBoxes.length) bicBoxes = boxes;
     }
 
     if (allTagged.length) {
@@ -323,15 +385,18 @@ async function handlePhoto(file) {
       if (cropResult) { showProposal(cropResult); return; }
     }
 
-    // Conteneur : crop de la zone code bic (bic.onnx) → OCR précis
-    if (state.target === "conteneur" && bicBox) {
+    // Conteneur : OCR sur CHAQUE zone code bic détectée → liste de propositions
+    if (state.target === "conteneur" && bicBoxes.length) {
       const clean = document.createElement("canvas");
       clean.width = W; clean.height = H;
       clean.getContext("2d").drawImage(photo, 0, 0);
-      el("model-status").textContent = "lecture OCR sur la zone code bic…";
-      const cropResult = await cropAndOcr(clean, bicBox, "/api/ocr-crop");
-      el("model-status").textContent = "";
-      if (cropResult?.bic) { showProposal(cropResult); return; }
+      const found = await ocrAllBoxes(clean, bicBoxes, "/api/ocr-crop", "bic");
+      if (found > 0) return;
+      // aucun code lisible : repli sur l'OCR de la meilleure zone
+      if (bicBox) {
+        const cropResult = await cropAndOcr(clean, bicBox, "/api/ocr-crop");
+        if (cropResult?.bic) { showProposal(cropResult); return; }
+      }
     }
   } catch (e) {
     console.warn("[capture] YOLO local indisponible :", e.message);
@@ -972,6 +1037,7 @@ function reset() {
   el("log-list").innerHTML      = "";
   el("det-count").textContent   = "0";
   el("ocr-status").textContent  = "";
+  document.querySelector("#detection-log h2").textContent = "Détections en cours";
   el("capture-btn-label").textContent = "Capturer cette image";
   el("scan-bic-input").value    = "";
   el("scan-plaque-input").value = "";

@@ -1,6 +1,6 @@
 # PIPELINES — Flux Image / Vidéo
 
-> **Dernière mise à jour** : 2026-07-18
+> **Dernière mise à jour** : 2026-07-28
 
 ## Pipeline image (V1 — implémenté, en production)
 
@@ -34,6 +34,26 @@ Validation humaine → POST /confirm → PostgreSQL          [invariant I3]
 
 **Latence mesurée (VPS CPU)** : ~4-10 s horizontal net, ~20-40 s vertical difficile.
 Warmup au démarrage du conteneur (modèles préchargés, EasyOCR cuit dans l'image Docker).
+
+### Variante navigateur multi-codes (Capture passage, 2026-07-28)
+
+Sur import d'image dans `capture.html` (cible conteneur), la détection tourne
+**en local** (bic.onnx via onnxruntime-web) et l'OCR serveur est appelé sur
+**chaque** zone code bic détectée — pas seulement la meilleure :
+
+```
+bic.onnx (local, seuil 0.15) → N zones code bic
+  │   tri par score, plafond 20 zones, 4 requêtes OCR simultanées max
+  ▼
+POST /api/ocr-crop × N (crops individuels)
+  ▼
+Déduplication par code lu → une carte par code dans « Codes détectés »
+  ▼
+Validation humaine : bouton Confirmer par carte           [invariant I3]
+```
+
+Si aucun code lisible → repli sur l'OCR de la meilleure zone (comportement V1).
+Cas d'usage : photos de parc avec plusieurs conteneurs empilés visibles.
 
 ## Pipeline plaque (service Plaque — pipeline construit 2026-07-18)
 
