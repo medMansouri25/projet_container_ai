@@ -104,6 +104,15 @@
         <span id="guide" class="guide g-aucun" aria-live="polite">—</span>
         <span id="model-status" class="subtitle" style="margin:0"></span>
       </div>
+      <div id="model-progress" class="model-progress" hidden>
+        <div class="model-progress-head">
+          <span id="model-progress-label">Téléchargement du modèle IA…</span>
+          <span id="model-progress-pct">0 %</span>
+        </div>
+        <div class="model-progress-track">
+          <div id="model-progress-bar" class="model-progress-bar"></div>
+        </div>
+      </div>
       <div class="stage">
         <canvas id="overlay" width="640" height="480" role="img" aria-label="Aperçu de détection"></canvas>
         <video id="video" muted playsinline></video>

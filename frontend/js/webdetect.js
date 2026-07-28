@@ -29,6 +29,53 @@ export async function loadSession(url) {
   });
 }
 
+/* Charge un modèle ONNX en suivant la progression du téléchargement.
+   onProgress({ loaded, total, pct, indeterminate }) est appelé au fil de l'eau.
+   Si le serveur ne renvoie pas Content-Length, pct est indéterminé. */
+export async function loadSessionWithProgress(url, onProgress) {
+  let resp;
+  try {
+    resp = await fetch(url);
+  } catch (netErr) {
+    // Erreur réseau (pas HTTP) : fallback onnxruntime, sans progression fine
+    if (onProgress) onProgress({ loaded: 0, total: 0, pct: 0, indeterminate: true });
+    return loadSession(url);
+  }
+  // Erreur HTTP (404, 500…) : remonter clairement, pas de fallback inutile
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+  const total = parseInt(resp.headers.get("content-length") || "0", 10);
+  let buffer;
+  if (resp.body && resp.body.getReader) {
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      if (onProgress) {
+        onProgress(total
+          ? { loaded, total, pct: Math.round(loaded / total * 100), indeterminate: false }
+          : { loaded, total: 0, pct: 0, indeterminate: true });
+      }
+    }
+    const all = new Uint8Array(loaded);
+    let pos = 0;
+    for (const c of chunks) { all.set(c, pos); pos += c.length; }
+    buffer = all.buffer;
+  } else {
+    buffer = await resp.arrayBuffer();
+    if (onProgress) onProgress({ loaded: buffer.byteLength, total: buffer.byteLength, pct: 100, indeterminate: false });
+  }
+
+  return ort.InferenceSession.create(buffer, {
+    executionProviders: ["wasm"],
+    graphOptimizationLevel: "all",
+  });
+}
+
 /* Letterbox une source (HTMLImageElement / HTMLVideoElement / canvas) en
    640×640 (fond gris), renvoie le tenseur CHW normalisé + les paramètres
    letterbox pour remapper les boîtes vers l'image d'origine. */

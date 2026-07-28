@@ -4,7 +4,7 @@
                    déclenche un OCR silencieux en arrière-plan, la caméra ne s'arrête
                    jamais. Les résultats s'accumulent dans le log de détections. */
 
-import { loadSession, detect, MODELS } from "./webdetect.js";
+import { loadSession, loadSessionWithProgress, detect, MODELS } from "./webdetect.js";
 
 const el = (id) => document.getElementById(id);
 const overlay = el("overlay");
@@ -94,21 +94,52 @@ async function session() {
   if (!state.sessions[state.target]) {
     const url    = MODELS[state.target].url;
     const cached = await modelIsCached(url);
-    let sizeLabel = "";
-    if (!cached) {
-      try {
-        const head = await fetch(url, { method: "HEAD" });
-        const bytes = parseInt(head.headers.get("content-length") || "0", 10);
-        if (bytes > 0) sizeLabel = ` (~${(bytes / 1_048_576).toFixed(1)} Mo)`;
-      } catch { /* taille inconnue, pas bloquant */ }
+    el("model-status").textContent = cached ? "chargement depuis le cache…" : "";
+    showModelProgress(cached ? "Chargement du modèle IA…" : "Téléchargement du modèle IA…");
+    try {
+      state.sessions[state.target] = await loadSessionWithProgress(url, updateModelProgress);
+    } catch (e) {
+      hideModelProgress();
+      el("model-status").textContent = "";
+      showError(`Modèle « ${state.target} » indisponible (${e.message}). `
+        + "Le fichier ONNX est-il présent et servi par le serveur ?");
+      throw e;
+    } finally {
+      hideModelProgress();
+      el("model-status").textContent = "";
     }
-    el("model-status").textContent = cached
-      ? "chargement depuis le cache…"
-      : `1er téléchargement YOLO${sizeLabel} — une seule fois…`;
-    state.sessions[state.target] = await loadSession(MODELS[state.target].url);
-    el("model-status").textContent = "";
   }
   return state.sessions[state.target];
+}
+
+/* ── Barre de progression du téléchargement de modèle ── */
+function showModelProgress(label) {
+  const box = el("model-progress");
+  if (!box) return;
+  box.hidden = false;
+  el("model-progress-label").textContent = label;
+  el("model-progress-pct").textContent   = "0 %";
+  const bar = el("model-progress-bar");
+  bar.style.width = "0%";
+  bar.classList.add("indeterminate");
+}
+function updateModelProgress(p) {
+  const bar = el("model-progress-bar");
+  if (!bar) return;
+  if (p.indeterminate) {
+    bar.classList.add("indeterminate");
+    el("model-progress-pct").textContent = "…";
+  } else {
+    bar.classList.remove("indeterminate");
+    bar.style.width = p.pct + "%";
+    const mb = p.total ? ` (${(p.loaded / 1_048_576).toFixed(1)}/${(p.total / 1_048_576).toFixed(1)} Mo)` : "";
+    el("model-progress-pct").textContent = p.pct + " %";
+    el("model-progress-label").textContent = "Téléchargement du modèle IA…" + mb;
+  }
+}
+function hideModelProgress() {
+  const box = el("model-progress");
+  if (box) box.hidden = true;
 }
 
 async function modelIsCached(url) {
@@ -312,22 +343,83 @@ async function handlePhoto(file) {
 async function handleVideo(file) {
   showActions();
   state.videoMode = true;
+  video.srcObject = null;
   video.src = URL.createObjectURL(file);
+  video.muted = true;
+  video.loop  = true;
   await new Promise((r) => video.addEventListener("loadeddata", r, { once: true }));
   el("capture-btn").hidden = false;
   el("stop-btn").hidden    = false;
+  el("scan-btn").hidden    = false;
+  el("scan-btn").disabled  = true;
+  el("detection-log").hidden = false;
+  el("det-count").textContent = "0";
+
+  // Démarrer l'aperçu tout de suite ; le modèle se charge en arrière-plan
   video.play();
-  loopVideoPreview();
+  loopVideoDetect();
+
+  // Chargement du modèle cible sans bloquer la boucle vidéo
+  session()
+    .then(() => {
+      el("model-status").textContent = "modèle prêt ✓";
+      setTimeout(() => { if (!state.ocrPending) el("model-status").textContent = ""; }, 2000);
+      loadExtraSessions();
+    })
+    .catch((e) => {
+      el("model-status").textContent = "";
+      console.warn("[capture] YOLO local indisponible sur vidéo :", e.message);
+    });
 }
 
-function loopVideoPreview() {
-  const tick = () => {
-    if (!state.videoMode || video.ended || video.paused) {
-      el("stop-btn").hidden = true; return;
+/* Boucle de détection sur vidéo importée — même logique que la caméra
+   (multi-classes + auto-capture ANPR), mais la source est le <video> fichier.
+   Lit la session cible depuis state.sessions à chaque frame : dès que le
+   modèle est chargé en arrière-plan, la détection démarre automatiquement. */
+async function loopVideoDetect() {
+  const tick = async () => {
+    if (!state.videoMode) { el("stop-btn").hidden = true; return; }
+    if (!video.videoWidth || !video.videoHeight) {
+      state.rafId = requestAnimationFrame(tick); return;
     }
-    if (video.videoWidth && video.videoHeight) {
-      drawFrame(video, video.videoWidth, video.videoHeight, []);
-      state.captured = { source: video, w: video.videoWidth, h: video.videoHeight };
+    const W = video.videoWidth, H = video.videoHeight;
+    const s = state.sessions[state.target];
+
+    if (!s) {   // modèle pas encore prêt : simple aperçu
+      drawFrame(video, W, H, []);
+      state.captured = { source: video, w: W, h: H };
+      state.rafId = requestAnimationFrame(tick);
+      return;
+    }
+
+    try {
+      const cfg = DETECT_CFG[state.target];
+      const primary = await detect(s, video, W, H, { numClasses: cfg.numClasses, conf: cfg.conf });
+      const primaryBoxes = primary.boxes.map(b => ({ ...b, boxColor: cfg.color, className: cfg.label }));
+      state.allBoxes[state.target] = primary.box;
+
+      const extraBoxes = [];
+      for (const [key, sess] of Object.entries(extraSessions)) {
+        if (!sess) continue;
+        const m = DETECT_CFG[key];
+        try {
+          const r = await detect(sess, video, W, H, { numClasses: m.numClasses, conf: m.conf });
+          r.boxes.forEach(b => extraBoxes.push({ ...b, boxColor: m.color, className: m.label }));
+          state.allBoxes[key] = r.box;
+        } catch { state.allBoxes[key] = null; }
+      }
+
+      state.lastFrameBoxes = [...primaryBoxes, ...extraBoxes];
+      drawFrame(video, W, H, state.lastFrameBoxes);
+      updateScanBtn();
+      setGuide(primary.guide.state);
+      state.captured    = { source: video, w: W, h: H };
+      state.detectedBox = primary.box;
+      state.goodStreak  = primary.guide.capture ? state.goodStreak + 1 : 0;
+      if (state.goodStreak >= 5) { state.goodStreak = 0; autoCapture(); }
+    } catch (e) {
+      // erreur d'inférence ponctuelle : garder l'aperçu, ne pas casser la boucle
+      drawFrame(video, W, H, []);
     }
     state.rafId = requestAnimationFrame(tick);
   };
@@ -444,7 +536,7 @@ function updateScanBtn() {
 
 /* Fige la caméra, lance l'OCR ciblé sur chaque boîte, affiche le dossier. */
 async function doScan() {
-  if (!state.cameraMode || !video.videoWidth) return;
+  if ((!state.cameraMode && !state.videoMode) || !video.videoWidth) return;
 
   // Snapshot propre AVANT d'arrêter le stream (sans annotations dessinées)
   const snap = document.createElement("canvas");
@@ -455,10 +547,12 @@ async function doScan() {
   const frozenBoxes    = [...state.lastFrameBoxes];
   const frozenAllBoxes = { ...state.allBoxes };
 
-  // Figer
+  // Figer (caméra ou vidéo)
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
   if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+  if (state.videoMode) video.pause();
   state.cameraMode = false;
+  state.videoMode  = false;
   el("scan-btn").hidden    = true;
   el("capture-btn").hidden = true;
   el("stop-btn").hidden    = true;
@@ -525,7 +619,10 @@ async function autoCapture() {
   c.getContext("2d").drawImage(source, 0, 0, w, h);
 
   const cfg = OCR[state.target];
-  const box = state.detectedBox;
+  // Pour conteneur : OCR sur la zone code bic (précise) plutôt que sur la caisse
+  const box = state.target === "conteneur"
+    ? (state.allBoxes.bic ?? state.detectedBox)
+    : state.detectedBox;
 
   // Crop de la zone détectée si une boîte YOLO est disponible
   let blob;
