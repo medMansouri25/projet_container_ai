@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Labo modèles BIC — SmartContainer AI</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --txt:#e2e8f0;
+          --muted:#94a3b8; --accent:#38bdf8; --ok:#4ade80; --warn:#fbbf24; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--txt); font-family:system-ui,Segoe UI,sans-serif;
+         padding:1.2rem; max-width:1200px; margin:0 auto; }
+  h1 { font-size:1.35rem; margin-bottom:.2rem; }
+  .sub { color:var(--muted); font-size:.9rem; margin-bottom:1.2rem; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px;
+           padding:1rem; margin-bottom:1rem; }
+  .row { display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-start; }
+  .drop { border:2px dashed var(--line); border-radius:10px; padding:1.2rem;
+          text-align:center; cursor:pointer; flex:1; min-width:240px; color:var(--muted); }
+  .drop.over { border-color:var(--accent); color:var(--accent); }
+  .drop img { max-width:100%; max-height:220px; border-radius:8px; margin-top:.6rem; }
+  .models { flex:1; min-width:240px; }
+  .models label { display:flex; gap:.5rem; align-items:center; padding:.3rem 0;
+                  cursor:pointer; font-size:.92rem; }
+  .models .map { color:var(--muted); font-size:.8rem; margin-left:auto; }
+  /* Trait de séparation entre mes modèles et ceux du tuteur */
+  .group-sep { display:flex; align-items:center; gap:.6rem; margin:.8rem 0 .3rem;
+               color:var(--accent); font-size:.78rem; font-weight:700;
+               text-transform:uppercase; letter-spacing:.04em; }
+  .group-sep::after { content:""; flex:1; height:1px; background:var(--accent);
+                      opacity:.45; }
+  .res.tuteur { border-left:3px solid #a78bfa; }
+  .tag-tuteur { color:#a78bfa; font-size:.72rem; font-weight:700; margin-left:.35rem; }
+  /* Galerie des crops : une vignette par zone détectée + code prédit */
+  .crops-title { margin:.7rem 0 .4rem; font-size:.78rem; font-weight:700;
+                 color:var(--accent); text-transform:uppercase; letter-spacing:.03em; }
+  .crops { display:flex; gap:.6rem; overflow-x:auto; padding-bottom:.5rem; }
+  .crop-item { flex:0 0 auto; width:190px; background:#0b1220; border:1px solid var(--line);
+               border-radius:8px; padding:.4rem; margin:0; text-align:center; position:relative; }
+  .crop-item.crop-ok   { border-color:var(--ok); }
+  .crop-item.crop-warn { border-color:var(--warn); }
+  .crop-item.crop-none { opacity:.6; }
+  .crop-item img { width:100%; height:210px; object-fit:contain; background:#000;
+                   border-radius:5px; cursor:zoom-in; }
+  .crop-idx { position:absolute; top:.4rem; left:.4rem; background:rgba(0,0,0,.7);
+              color:#cbd5e1; font-size:.7rem; padding:1px 5px; border-radius:4px; }
+  .crop-item figcaption { margin-top:.4rem; display:flex; flex-direction:column; gap:2px; }
+  .crop-code { font-family:Consolas,monospace; font-size:.92rem; letter-spacing:.5px;
+               color:var(--txt); word-break:break-all; }
+  /* Zoom plein écran au clic sur un crop */
+  .crop-zoom { position:fixed; inset:0; background:rgba(0,0,0,.9); display:flex;
+               align-items:center; justify-content:center; z-index:999; cursor:zoom-out; }
+  .crop-zoom img { max-width:92vw; max-height:92vh; object-fit:contain; }
+  /* Onglets Image / Vidéo */
+  .mode-tabs { display:flex; gap:.5rem; margin-bottom:1rem; }
+  .mode-tab { background:transparent; color:var(--muted); border:1px solid var(--line);
+              padding:.5rem 1.1rem; border-radius:9px; cursor:pointer; font-size:.95rem; font-weight:600; }
+  .mode-tab.active { background:var(--accent); color:#082f49; border-color:var(--accent); }
+  .mode-tab .exp { font-size:.68rem; opacity:.8; }
+  #video-info { margin-top:.7rem; font-size:.85rem; color:var(--muted); text-align:left;
+                display:grid; grid-template-columns:auto 1fr; gap:.15rem .7rem; }
+  #video-info b { color:var(--txt); }
+  /* Progression vidéo */
+  #video-progress { margin-top:1rem; }
+  .vp-bar-track { height:12px; background:#0b1220; border:1px solid var(--line);
+                  border-radius:999px; overflow:hidden; }
+  .vp-bar { height:100%; width:0; background:linear-gradient(90deg,var(--accent),#4ade80);
+            transition:width .2s; }
+  .vp-stats { display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:.5rem; font-size:.85rem;
+              color:var(--muted); }
+  .vp-stats b { color:var(--txt); font-variant-numeric:tabular-nums; }
+  /* Résultats vidéo : liste de codes agrégés */
+  #video-results { background:var(--card); border:1px solid var(--line); border-radius:12px;
+                   padding:1rem; margin-bottom:1rem; }
+  #video-results h2 { font-size:1.05rem; margin-bottom:.2rem; }
+  .vcodes { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:.7rem;
+            margin-top:.8rem; }
+  .vcode { display:flex; gap:.6rem; align-items:center; background:#0b1220;
+           border:1px solid var(--line); border-radius:9px; padding:.5rem; }
+  .vcode.ok { border-color:var(--ok); }
+  .vcode.warn { border-color:var(--warn); }
+  .vcode img { width:64px; height:64px; object-fit:contain; background:#000; border-radius:6px; cursor:zoom-in; }
+  .vcode .vc-code { font-family:Consolas,monospace; font-size:1rem; letter-spacing:.5px; }
+  .vcode .vc-meta { font-size:.72rem; color:var(--muted); }
+  .vc-cands { margin-top:.3rem; font-size:.68rem; color:var(--muted); line-height:1.5; }
+  .vc-cand { background:#0b1220; border:1px solid var(--line); border-radius:4px;
+             padding:1px 4px; font-family:Consolas,monospace; white-space:nowrap; }
+  .vc-cand-ok { border-color:var(--ok); color:var(--ok); }
+  .vc-cand sub { color:#64748b; }
+  .btn { background:var(--accent); color:#082f49; font-weight:700; border:0;
+         padding:.65rem 1.2rem; border-radius:9px; cursor:pointer; font-size:.95rem; }
+  .btn:disabled { opacity:.4; cursor:default; }
+  .btn.sec { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  .opts { display:flex; gap:1rem; align-items:center; margin-top:.8rem; flex-wrap:wrap; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:1rem; }
+  .res { background:var(--card); border:1px solid var(--line); border-radius:12px;
+         padding:.9rem; }
+  .res.best { border-color:var(--ok); box-shadow:0 0 0 1px var(--ok); }
+  .res h3 { font-size:.95rem; margin-bottom:.5rem; }
+  .res img { width:100%; border-radius:8px; }
+  .stats { display:flex; gap:.9rem; flex-wrap:wrap; color:var(--muted);
+           font-size:.82rem; margin:.5rem 0; }
+  .stats b { color:var(--txt); }
+  .code { font-family:Consolas,monospace; font-size:1.05rem; letter-spacing:1px;
+          background:#0b1220; border:1px solid var(--line); border-radius:8px;
+          padding:.4rem .7rem; display:inline-block; margin-top:.3rem; }
+  .ok   { color:var(--ok); }  .warn { color:var(--warn); }
+  .load { color:var(--muted); font-style:italic; }
+  .badge-best { color:var(--ok); font-size:.78rem; font-weight:700; margin-left:.4rem; }
+</style>
+</head>
+<body>
+  <h1>🔬 Labo modèles BIC</h1>
+  <p class="sub">Compare les modèles de détection de zone code BIC sur une même image —
+     les modèles issus des configs du benchmark apparaissent ici automatiquement après entraînement.</p>
+
+  <div class="panel">
+    <div class="mode-tabs">
+      <button class="mode-tab active" id="mode-image" data-mode="image">🖼️ Image</button>
+      <button class="mode-tab" id="mode-video" data-mode="video">🎬 Vidéo <span class="exp">expérimental</span></button>
+      <button class="mode-tab" id="mode-rtsp" data-mode="rtsp">📡 Caméra RTSP <span class="exp">expérimental</span></button>
+    </div>
+    <div id="rtsp-panel" hidden style="margin-bottom:1rem">
+      <p class="sub" style="color:var(--muted);font-size:.82rem;margin-bottom:.5rem">
+        Sur ton téléphone, lance une appli qui diffuse un flux RTSP (ex. « IP Webcam », « RTSP Camera Server »…),
+        récupère l'adresse <code>rtsp://IP:PORT/…</code> et colle-la ici. Le téléphone doit être sur le même Wi-Fi.</p>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+        <input type="text" id="rtsp-url" placeholder="rtsp://192.168.1.20:8080/h264_ulaw.sdp"
+               style="flex:1;min-width:280px;padding:.55rem;background:#0b1220;color:var(--txt);
+                      border:1px solid var(--line);border-radius:7px;font-size:.9rem">
+        <button class="btn" id="rtsp-connect">Connecter la caméra</button>
+        <button class="btn sec" id="rtsp-disconnect" hidden>Déconnecter</button>
+      </div>
+      <div id="rtsp-status" style="margin-top:.5rem;font-size:.85rem"></div>
+      <div id="rtsp-live" hidden style="margin-top:.7rem">
+        <div style="color:var(--ok);font-weight:700;margin-bottom:.35rem">📡 CAMÉRA RTSP — CONNECTÉE</div>
+        <img id="rtsp-img" alt="flux caméra" style="max-width:100%;max-height:340px;border-radius:8px;background:#000">
+        <div style="margin-top:.6rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="rtsp-rec-start">🔴 Démarrer l'enregistrement</button>
+          <button class="btn" id="rtsp-rec-stop" hidden style="background:#ef4444;color:#fff">⏹ Arrêter l'enregistrement</button>
+          <span id="rtsp-rec-timer" style="font-family:Consolas,monospace;font-weight:700"></span>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="drop" id="drop">
+        <span id="drop-label">📁 Cliquer ou déposer une image ici</span>
+        <img id="preview" hidden alt="">
+        <video id="video-preview" hidden muted controls style="max-width:100%;max-height:220px;border-radius:8px;margin-top:.6rem"></video>
+        <input type="file" id="file" accept="image/*" hidden>
+        <div id="video-info" hidden></div>
+      </div>
+      <div class="models">
+        <strong>Modèles à comparer</strong>
+        <div id="model-list" style="margin-top:.4rem"><span class="load">chargement…</span></div>
+        <div style="margin-top:.9rem">
+          <strong>Moteur de lecture (OCR)</strong>
+          <select id="ocr-engine" style="width:100%;margin-top:.35rem;padding:.4rem;
+                  background:#0b1220;color:var(--txt);border:1px solid var(--line);
+                  border-radius:7px;font-size:.9rem"></select>
+        </div>
+      </div>
+    </div>
+    <div class="opts">
+      <button class="btn" id="run" disabled>⚡ Comparer la sélection</button>
+      <button class="btn" id="run-video" disabled hidden>🎬 Analyser la vidéo (5 FPS)</button>
+      <button class="btn sec" id="toggle-all">Tout cocher / décocher</button>
+      <label style="display:flex;gap:.4rem;align-items:center;cursor:pointer">
+        <input type="checkbox" id="ocr" checked> Lire le code (OCR) sur la meilleure zone
+      </label>
+      <span id="status" class="load"></span>
+    </div>
+    <div id="video-progress" hidden></div>
+  </div>
+
+  <div id="video-results" hidden></div>
+  <div class="grid" id="results"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let imageFile = null;
+
+/* ── Import image ── */
+$("drop").addEventListener("click", () => $("file").click());
+["dragenter","dragover"].forEach(e => $("drop").addEventListener(e, ev => {
+  ev.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave","drop"].forEach(e => $("drop").addEventListener(e, ev => {
+  ev.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", ev => {
+  const f = ev.dataTransfer.files[0]; if (!f) return;
+  if (mode === "video" && f.type.startsWith("video/")) setVideo(f);
+  else if (mode === "image" && f.type.startsWith("image/")) setImage(f);
+});
+$("file").addEventListener("change", () => {
+  const f = $("file").files[0]; if (!f) return;
+  if (mode === "video") setVideo(f); else setImage(f);
+});
+function setImage(f) {
+  imageFile = f;
+  $("preview").src = URL.createObjectURL(f);
+  $("preview").hidden = false;
+  $("drop-label").textContent = f.name;
+  updateRunBtn();
+}
+
+/* ── Liste des modèles ── */
+const GROUPS = {};   // id du modèle -> "mien" | "tuteur"
+
+async function loadModels() {
+  try {
+    const r = await fetch("/api/labo/models");
+    const { models, ocr_engines } = await r.json();
+
+    // Séparation visuelle : mes modèles d'abord, ceux du tuteur ensuite
+    const mine  = models.filter(m => m.group !== "tuteur");
+    const tutor = models.filter(m => m.group === "tuteur");
+    models.forEach(m => GROUPS[m.id] = m.group || "mien");
+
+    const line = m => `
+      <label><input type="checkbox" class="mchk" value="${m.id}" checked>
+        ${m.label}
+        <span class="map">${m.imgsz ? m.imgsz + "px" : ""}${m.map50_95 != null ? " · mAP50-95 " + (m.map50_95 * 100).toFixed(1) + " %" : ""}</span>
+      </label>`;
+
+    let html = "";
+    if (mine.length)  html += `<div class="group-sep">Mes modèles</div>` + mine.map(line).join("");
+    if (tutor.length) html += `<div class="group-sep">Modèles du tuteur</div>` + tutor.map(line).join("");
+    $("model-list").innerHTML = html || '<span class="load">aucun modèle trouvé</span>';
+
+    // Moteurs de lecture (EasyOCR vs détecteurs de caractères du tuteur)
+    const sel = $("ocr-engine");
+    sel.innerHTML = (ocr_engines || []).map(e =>
+      `<option value="${e.id}">${e.label}</option>`).join("");
+  } catch {
+    $("model-list").innerHTML = '<span class="warn">serveur injoignable — lancer serveLocal.bat</span>';
+  }
+  updateRunBtn();
+}
+$("toggle-all").addEventListener("click", () => {
+  const boxes = [...document.querySelectorAll(".mchk")];
+  const allOn = boxes.every(b => b.checked);
+  boxes.forEach(b => b.checked = !allOn);
+  updateRunBtn();
+});
+document.addEventListener("change", e => {
+  if (e.target.classList?.contains("mchk")) updateRunBtn();
+});
+function selected() {
+  return [...document.querySelectorAll(".mchk:checked")].map(b => b.value);
+}
+function updateRunBtn() {
+  $("run").disabled = !imageFile || selected().length === 0;
+  $("run-video").disabled = !videoFile || selected().length === 0;
+}
+
+/* ── Mode Image / Vidéo ─────────────────────────────────────────────── */
+let mode = "image";
+let videoFile = null;
+
+document.querySelectorAll(".mode-tab").forEach(t =>
+  t.addEventListener("click", () => setMode(t.dataset.mode)));
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll(".mode-tab").forEach(t =>
+    t.classList.toggle("active", t.dataset.mode === m));
+  const vid = m === "video", rtsp = m === "rtsp";
+  $("file").setAttribute("accept", vid ? "video/*" : "image/*");
+  $("drop-label").textContent = vid
+    ? "🎬 Cliquer ou déposer une vidéo ici" : "📁 Cliquer ou déposer une image ici";
+  // RTSP réutilise le pipeline vidéo → bouton "Analyser la vidéo" mais source = enregistrement
+  $("run").hidden = vid || rtsp;   $("run-video").hidden = !vid;
+  $("drop").hidden = rtsp;                   // masque la zone d'import, garde la liste modèles
+  $("rtsp-panel").hidden = !rtsp;
+  $("preview").hidden = true; $("video-preview").hidden = true;
+  $("video-info").hidden = true; $("video-progress").hidden = true;
+  $("video-results").hidden = true; $("results").innerHTML = "";
+  updateRunBtn();
+}
+
+/* Sélection d'une vidéo : lecture des métadonnées côté client (aucun upload). */
+function setVideo(f) {
+  videoFile = f;
+  const url = URL.createObjectURL(f);
+  const vp = $("video-preview");
+  vp.src = url; vp.hidden = false;
+  $("drop-label").textContent = f.name;
+  vp.onloadedmetadata = () => {
+    $("video-info").hidden = false;
+    $("video-info").innerHTML = `
+      <span>Fichier :</span><b>${f.name}</b>
+      <span>Durée :</span><b>${vp.duration.toFixed(1)} s</b>
+      <span>Résolution :</span><b>${vp.videoWidth}×${vp.videoHeight}</b>
+      <span>Taille :</span><b>${(f.size/1048576).toFixed(1)} Mo</b>
+      <span>FPS d'analyse :</span><b>5 FPS</b>`;
+  };
+  updateRunBtn();
+}
+
+/* ── Analyse vidéo réutilisable : flux NDJSON → progression → résultats ──
+   `fd` porte la SOURCE (video=fichier OU recording=nom RTSP) + model_id + ocr.
+   Un seul chemin d'analyse pour l'upload manuel ET l'enregistrement RTSP. */
+async function runVideoAnalysis(fd, modelId) {
+  $("video-results").hidden = true;
+  $("video-progress").hidden = false;
+  $("video-progress").innerHTML = `
+    <div class="vp-bar-track"><div class="vp-bar" id="vp-bar"></div></div>
+    <div class="vp-stats" id="vp-stats">Ouverture de la vidéo…</div>`;
+  let meta = null, done = null;
+  const r = await fetch("/api/labo/detect-video", { method: "POST", body: fd });
+  if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error || r.status); }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done: fin } = await reader.read();
+    if (fin) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const ev = JSON.parse(line);
+      if (ev.type === "meta") { meta = ev; renderVideoMeta(ev); }
+      else if (ev.type === "progress") renderVideoProgress(ev);
+      else if (ev.type === "done") done = ev;
+      else if (ev.type === "error") throw new Error(ev.error);
+    }
+  }
+  if (done) renderVideoCodes(done, meta, modelId);
+}
+
+$("run-video").addEventListener("click", async () => {
+  const ids = selected();
+  if (!videoFile || !ids.length) return;
+  $("run-video").disabled = true;
+  const fd = new FormData();
+  fd.append("video", videoFile);
+  fd.append("model_id", ids[0]);   // vidéo = 1 détecteur (le 1er coché)
+  fd.append("ocr_engine", $("ocr-engine").value || "easyocr");
+  try { await runVideoAnalysis(fd, ids[0]); }
+  catch (e) { $("vp-stats").innerHTML = `<span class="warn">échec : ${e.message}</span>`; }
+  finally { $("run-video").disabled = false; }
+});
+
+/* ── Caméra RTSP : connexion → aperçu MJPEG → enregistrement → analyse ── */
+let rtspSid = null, recTimer = null;
+$("rtsp-connect").addEventListener("click", async () => {
+  const url = $("rtsp-url").value.trim();
+  $("rtsp-status").innerHTML = `<span class="load">Connexion à la caméra…</span>`;
+  try {
+    const fd = new FormData(); fd.append("url", url);
+    const r = await fetch("/api/labo/rtsp/connect", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "connexion impossible");
+    rtspSid = d.session;
+    $("rtsp-status").innerHTML =
+      `<span class="ok">✔ connectée</span> · ${d.resolution || "?"} · ${d.fps || "?"} FPS`;
+    $("rtsp-img").src = `/api/labo/rtsp/preview/${rtspSid}?t=${Date.now()}`;
+    $("rtsp-live").hidden = false;
+    $("rtsp-connect").hidden = true;
+    $("rtsp-disconnect").hidden = false;
+  } catch (e) {
+    $("rtsp-status").innerHTML = `<span class="warn">❌ ${e.message}</span>`;
+  }
+});
+
+$("rtsp-disconnect").addEventListener("click", async () => {
+  await disconnectRtsp();
+});
+async function disconnectRtsp() {
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  $("rtsp-img").src = "";
+  if (rtspSid) {
+    const fd = new FormData(); fd.append("session", rtspSid);
+    try { await fetch("/api/labo/rtsp/disconnect", { method: "POST", body: fd }); } catch {}
+  }
+  rtspSid = null;
+  $("rtsp-live").hidden = true;
+  $("rtsp-connect").hidden = false;
+  $("rtsp-disconnect").hidden = true;
+  $("rtsp-status").innerHTML = "";
+}
+
+$("rtsp-rec-start").addEventListener("click", async () => {
+  if (!rtspSid) return;
+  const fd = new FormData(); fd.append("session", rtspSid);
+  const r = await fetch("/api/labo/rtsp/record/start", { method: "POST", body: fd });
+  const d = await r.json();
+  if (!r.ok) { $("rtsp-status").innerHTML = `<span class="warn">${d.error}</span>`; return; }
+  $("rtsp-rec-start").hidden = true;
+  $("rtsp-rec-stop").hidden = false;
+  const t0 = Date.now();
+  recTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    $("rtsp-rec-timer").innerHTML =
+      `🔴 ENREGISTREMENT ${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  }, 500);
+});
+
+$("rtsp-rec-stop").addEventListener("click", async () => {
+  if (!rtspSid) return;
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  $("rtsp-rec-stop").hidden = true;
+  $("rtsp-rec-start").hidden = false;
+  $("rtsp-rec-timer").innerHTML = "";
+  const fd = new FormData(); fd.append("session", rtspSid);
+  const r = await fetch("/api/labo/rtsp/record/stop", { method: "POST", body: fd });
+  const d = await r.json();
+  if (!r.ok || !d.recording) { $("rtsp-status").innerHTML = `<span class="warn">${d.error||"échec"}</span>`; return; }
+  $("rtsp-status").innerHTML = `✔ enregistré : <b>${d.recording}</b> (${d.seconds}s, ${d.frames} frames) — analyse en cours…`;
+
+  // → pipeline vidéo EXISTANT : source = enregistrement RTSP côté serveur
+  const ids = selected();
+  if (!ids.length) { $("rtsp-status").innerHTML = `<span class="warn">Coche un détecteur d'abord.</span>`; return; }
+  const afd = new FormData();
+  afd.append("recording", d.recording);       // pas d'upload : fichier déjà serveur
+  afd.append("model_id", ids[0]);
+  afd.append("ocr_engine", $("ocr-engine").value || "easyocr");
+  try { await runVideoAnalysis(afd, ids[0]); }
+  catch (e) { $("vp-stats") && ($("vp-stats").innerHTML = `<span class="warn">échec : ${e.message}</span>`); }
+});
+
+function renderVideoMeta(m) {
+  $("vp-stats").innerHTML =
+    `<span>Frames à analyser : <b>${m.to_analyze}</b> (sur ${m.total_frames}, ${m.orig_fps} FPS → ${m.analysis_fps} FPS)</span>`;
+}
+function renderVideoProgress(e) {
+  $("vp-bar").style.width = e.pct + "%";
+  $("vp-stats").innerHTML =
+    `<span>frame <b>${e.analyzed}/${e.to_analyze}</b> · <b>${e.pct}%</b></span>` +
+    `<span>vitesse <b>${e.proc_fps}</b> frames/s</span>` +
+    `<span>codes BIC détectés : <b>${e.codes}</b></span>`;
+}
+function renderVideoCodes(done, meta, modelId) {
+  $("vp-bar").style.width = "100%";
+  $("vp-stats").innerHTML =
+    `<span>✓ terminé — <b>${done.analyzed}</b> frames en <b>${done.elapsed}s</b></span>` +
+    `<span><b>${done.codes.length}</b> codes uniques</span>`;
+  window._videoCodes = done.codes;
+  $("video-results").hidden = false;
+  renderVcodeList();
+}
+
+function renderVcodeList() {
+  const all = window._videoCodes || [];
+  const hideUncertain = $("hide-uncertain") && $("hide-uncertain").checked;
+  // « Confirmé » = chiffre authentique OU vu sur ≥ 2 frames (vote temporel).
+  const shown = hideUncertain
+    ? all.filter(c => c.valid || c.count >= 2) : all;
+  const nConf = all.filter(c => c.valid || c.count >= 2).length;
+  $("video-results").innerHTML = `
+    <h2>🎬 Codes BIC détectés dans la vidéo — ${all.length} uniques (${nConf} confirmés)</h2>
+    <p class="sub" style="color:var(--muted);font-size:.82rem">
+      Dédupliqués + consolidés sur toute la vidéo · authentiques et gros votes d'abord</p>
+    <label style="display:inline-flex;gap:.4rem;align-items:center;cursor:pointer;margin:.4rem 0;font-size:.85rem">
+      <input type="checkbox" id="hide-uncertain" ${hideUncertain ? "checked" : ""}>
+      Masquer les lectures incertaines (1 frame · recalculé)
+    </label>
+    <div class="vcodes">
+      ${shown.map(c => {
+        const cands = (c.candidates || []).filter(x => x.bic !== c.bic);
+        return `
+        <div class="vcode ${c.valid ? "ok" : "warn"}">
+          ${c.crop ? `<img src="${c.crop}" alt="">` : ""}
+          <div style="min-width:0">
+            <div class="vc-code">${c.bic}</div>
+            <div class="vc-meta">${c.valid ? "✔ authentique" : "⚠ recalculé"} · ${c.count} frame(s) · t=${c.first_time}s</div>
+            ${cands.length ? `<div class="vc-cands">Autres lectures : ${
+              cands.map(x => `<span class="vc-cand ${x.valid ? "vc-cand-ok" : ""}">${x.bic}<sub>×${x.count}</sub></span>`).join(" ")}</div>` : ""}
+          </div>
+        </div>`; }).join("")}
+    </div>`;
+  $("hide-uncertain").addEventListener("change", renderVcodeList);
+}
+
+/* ── Comparaison : une requête séquentielle par modèle (GPU = 1 à la fois) ── */
+$("run").addEventListener("click", async () => {
+  const ids = selected();
+  $("run").disabled = true;
+  $("results").innerHTML = "";
+  const cards = {};
+  for (const id of ids) {
+    const c = document.createElement("div");
+    c.className = "res" + (GROUPS[id] === "tuteur" ? " tuteur" : "");
+    c.innerHTML = `<h3>${id}${GROUPS[id] === "tuteur" ? '<span class="tag-tuteur">TUTEUR</span>' : ""}</h3><p class="load">en attente…</p>`;
+    $("results").appendChild(c);
+    cards[id] = c;
+  }
+  const scores = [];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    $("status").textContent = `Inférence ${i + 1}/${ids.length} : ${id}`;
+    cards[id].querySelector("p").textContent = "inférence en cours…";
+    const fd = new FormData();
+    fd.append("image", imageFile);
+    fd.append("model_id", id);
+    fd.append("ocr", $("ocr").checked ? "1" : "0");
+    fd.append("ocr_engine", $("ocr-engine").value || "easyocr");
+    try {
+      const r = await fetch("/api/labo/detect", { method: "POST", body: fd });
+      // Le serveur peut renvoyer une page HTML sur erreur non gérée : lire en
+      // texte d'abord évite le « Unexpected token '<' » qui masque le motif.
+      const body = await r.text();
+      let d;
+      try { d = JSON.parse(body); }
+      catch { throw new Error(`réponse serveur invalide (HTTP ${r.status}) — ${body.slice(0, 120)}`); }
+      if (!r.ok) throw new Error(d.error || r.status);
+      renderCard(cards[id], id, d);
+      const maxConf = d.boxes.length ? Math.max(...d.boxes.map(b => b.conf)) : 0;
+      const nValid  = (d.ocr || []).filter(o => o.valid).length;
+      const nCodes  = (d.ocr || []).length;
+      scores.push({ id, score: nValid * 10 + nCodes * 2 + maxConf });
+    } catch (e) {
+      cards[id].innerHTML = `<h3>${id}</h3><p class="warn">échec : ${e.message}</p>`;
+    }
+  }
+  // Surligner le meilleur (code valide d'abord, puis confiance)
+  if (scores.length) {
+    const best = scores.reduce((a, b) => b.score > a.score ? b : a);
+    cards[best.id]?.classList.add("best");
+    cards[best.id]?.querySelector("h3")?.insertAdjacentHTML("beforeend",
+      '<span class="badge-best">★ meilleur</span>');
+  }
+  $("status").textContent = "Comparaison terminée";
+  $("run").disabled = false;
+});
+
+function renderCard(card, id, d) {
+  const maxConf = d.boxes.length ? Math.max(...d.boxes.map(b => b.conf)) : 0;
+  const codes = d.ocr || [];
+  let ocrHtml = "";
+  if (Array.isArray(d.ocr)) {
+    ocrHtml = codes.length
+      ? codes.map(o => `
+          <div style="margin-top:.35rem">
+            <span class="code">${o.bic}</span>
+            <span class="${o.valid ? "ok" : "warn"}" style="font-size:.78rem">
+              ${o.valid
+                 ? "✔ chiffre de contrôle authentique"
+                 : "⚠ chiffre RECALCULÉ — lecture douteuse"} · zone ${(o.conf * 100).toFixed(0)} %</span>
+          </div>`).join("")
+      : `<span class="warn" style="font-size:.85rem">aucun code lu</span>`;
+  }
+  // Galerie : un crop par zone détectée, avec SON code prédit dessous
+  const zones = d.zones || [];
+  const galerie = zones.length ? `
+    <div class="crops-title">Zones → crop → OCR (${zones.length})</div>
+    <div class="crops">
+      ${zones.map(z => `
+        <figure class="crop-item ${z.bic ? (z.valid ? "crop-ok" : "crop-warn") : "crop-none"}">
+          <span class="crop-idx">#${z.index} · ${(z.conf * 100).toFixed(0)}%</span>
+          <img src="${z.crop}" alt="zone ${z.index}">
+          <figcaption>${z.bic
+             ? `<span class="crop-code">${z.bic}</span>
+                <span class="${z.valid ? "ok" : "warn"}" style="font-size:.66rem">
+                  ${z.valid ? "✔ authentique" : "⚠ recalculé"}</span>`
+             : `<span class="warn" style="font-size:.7rem">non lu</span>`}
+          </figcaption>
+        </figure>`).join("")}
+    </div>` : "";
+
+  card.innerHTML = `
+    <h3>${id}${GROUPS[id] === "tuteur" ? '<span class="tag-tuteur">TUTEUR</span>' : ""}</h3>
+    ${d.annotated ? `<img src="${d.annotated}" alt="">` : ""}
+    <div class="stats">
+      <span>zones : <b>${d.boxes.length}</b></span>
+      <span>codes lus : <b>${codes.length}</b></span>
+      <span>conf max : <b>${(maxConf * 100).toFixed(0)} %</b></span>
+      <span>temps : <b>${d.time_ms} ms</b></span>
+    </div>
+    ${ocrHtml}
+    ${galerie}`;
+}
+
+// Clic sur un crop → agrandissement plein écran (clic n'importe où pour fermer)
+document.addEventListener("click", e => {
+  if (e.target.matches(".crop-item img") || e.target.matches(".vcode img")) {
+    const ov = document.createElement("div");
+    ov.className = "crop-zoom";
+    ov.innerHTML = `<img src="${e.target.src}" alt="zoom">`;
+    ov.addEventListener("click", () => ov.remove());
+    document.body.appendChild(ov);
+  }
+});
+
+loadModels();
+</script>
+</body>
+</html>

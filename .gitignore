@@ -78,6 +78,12 @@ Application/datasetEnt/
 # Modele BIC navigateur (yolo11n) tracke
 !Application/models/bic_browser/best_*.pt
 
+# Modele multi-code config11 tracke (detection production, ADR-18)
+!Application/models/multicode/best.pt
+
+# Modele OCR caractere du tuteur tracke (production, ADR-17)
+!RessourceFourni/ocr_modéle_tuteur/ocr_models/yolov8s_augmented_best.pt
+
 # Dataset caractere (derive + brut tuteur, volumineux - hors git)
 Application/dataset/char/
 Application/dataset/ocr_container-*/
