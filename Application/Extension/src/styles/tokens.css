@@ -1,0 +1,14 @@
+/* tokens.css — palette partagée, cohérente avec le Labo (labo.html) pour
+   que les outils de dev de SmartContainer AI se ressemblent visuellement. */
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --line: #334155;
+  --txt: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --radius: 10px;
+}

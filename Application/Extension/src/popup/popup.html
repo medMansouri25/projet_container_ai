@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>BIC Detector</title>
+<link rel="stylesheet" href="../styles/tokens.css">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="topbar">
+    <img src="../../icons/icon32.png" alt="" class="logo">
+    <div>
+      <h1>BIC Detector</h1>
+      <p class="subtitle">SmartContainer AI — Marsa Maroc</p>
+    </div>
+  </header>
+
+  <section class="status-row">
+    <span class="status-dot" id="status-dot" data-state="disconnected"></span>
+    <span id="status-text">Déconnectée</span>
+  </section>
+
+  <section class="panel">
+    <label for="rtsp-url">Adresse RTSP</label>
+    <input type="text" id="rtsp-url" placeholder="rtsp://192.168.1.20:8080/...">
+    <p class="hint">Sur ton téléphone, lance une appli de caméra RTSP (ex. « IP Webcam »,
+      « RTSP Camera Server »), copie l'adresse du flux ici. Le téléphone doit être sur
+      le même réseau que ce poste.</p>
+    <button class="btn" id="btn-connect">Connecter la caméra</button>
+    <button class="btn btn-secondary" id="btn-disconnect" hidden>Déconnecter</button>
+  </section>
+
+  <section class="panel" id="preview-panel" hidden>
+    <label>Flux caméra</label>
+    <div class="preview-frame">
+      <img id="preview-img" alt="flux caméra RTSP">
+    </div>
+    <dl class="meta-grid">
+      <dt>Résolution</dt><dd id="meta-res">—</dd>
+      <dt>FPS</dt><dd id="meta-fps">—</dd>
+    </dl>
+    <button class="btn btn-rec" id="btn-rec-start">🔴 Démarrer l'enregistrement</button>
+    <button class="btn btn-danger" id="btn-rec-stop" hidden>⏹ Arrêter l'enregistrement</button>
+    <div class="rec-timer" id="rec-timer" hidden></div>
+  </section>
+
+  <section class="panel" id="analysis-panel" hidden>
+    <label>Analyse (5 FPS)</label>
+    <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+    <p class="progress-text" id="progress-text">—</p>
+  </section>
+
+  <section class="panel" id="results-panel" hidden>
+    <label>Codes BIC détectés</label>
+    <label class="checkbox-row">
+      <input type="checkbox" id="hide-uncertain">
+      Masquer les lectures incertaines (1 frame, recalculé)
+    </label>
+    <div id="results-list"></div>
+  </section>
+
+  <footer>
+    <span id="backend-url"></span>
+    <span class="version">v0.1.0</span>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

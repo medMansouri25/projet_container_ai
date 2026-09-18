@@ -107,6 +107,12 @@
   .ok   { color:var(--ok); }  .warn { color:var(--warn); }
   .load { color:var(--muted); font-style:italic; }
   .badge-best { color:var(--ok); font-size:.78rem; font-weight:700; margin-left:.4rem; }
+  /* Bouton copier un code BIC (image, galerie de zones, vidéo) */
+  .btn-copy { background:transparent; border:1px solid var(--line); color:var(--muted);
+              border-radius:5px; padding:1px 6px; font-size:.75rem; cursor:pointer;
+              line-height:1.5; vertical-align:middle; }
+  .btn-copy:hover { border-color:var(--accent); color:var(--accent); }
+  .btn-copy.copied { border-color:var(--ok); color:var(--ok); }
 </style>
 </head>
 <body>
@@ -464,7 +470,7 @@ function renderVcodeList() {
         <div class="vcode ${c.valid ? "ok" : "warn"}">
           ${c.crop ? `<img src="${c.crop}" alt="">` : ""}
           <div style="min-width:0">
-            <div class="vc-code">${c.bic}</div>
+            <div class="vc-code">${c.bic} <button class="btn-copy" data-code="${c.bic}" title="Copier le code">📋</button></div>
             <div class="vc-meta">${c.valid ? "✔ authentique" : "⚠ recalculé"} · ${c.count} frame(s) · t=${c.first_time}s</div>
             ${cands.length ? `<div class="vc-cands">Autres lectures : ${
               cands.map(x => `<span class="vc-cand ${x.valid ? "vc-cand-ok" : ""}">${x.bic}<sub>×${x.count}</sub></span>`).join(" ")}</div>` : ""}
@@ -533,8 +539,9 @@ function renderCard(card, id, d) {
   if (Array.isArray(d.ocr)) {
     ocrHtml = codes.length
       ? codes.map(o => `
-          <div style="margin-top:.35rem">
+          <div style="margin-top:.35rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
             <span class="code">${o.bic}</span>
+            <button class="btn-copy" data-code="${o.bic}" title="Copier le code">📋</button>
             <span class="${o.valid ? "ok" : "warn"}" style="font-size:.78rem">
               ${o.valid
                  ? "✔ chiffre de contrôle authentique"
@@ -553,6 +560,7 @@ function renderCard(card, id, d) {
           <img src="${z.crop}" alt="zone ${z.index}">
           <figcaption>${z.bic
              ? `<span class="crop-code">${z.bic}</span>
+                <button class="btn-copy" data-code="${z.bic}" title="Copier le code">📋</button>
                 <span class="${z.valid ? "ok" : "warn"}" style="font-size:.66rem">
                   ${z.valid ? "✔ authentique" : "⚠ recalculé"}</span>`
              : `<span class="warn" style="font-size:.7rem">non lu</span>`}
@@ -572,6 +580,28 @@ function renderCard(card, id, d) {
     ${ocrHtml}
     ${galerie}`;
 }
+
+/* ── Copier un code BIC (bouton 📋 à côté de chaque code affiché) ── */
+async function copyCode(btn) {
+  const code = btn.dataset.code;
+  try {
+    await navigator.clipboard.writeText(code);
+  } catch {
+    // repli si l'API Clipboard est indisponible (contexte non sécurisé, permission refusée)
+    const ta = document.createElement("textarea");
+    ta.value = code; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch {}
+    document.body.removeChild(ta);
+  }
+  const original = btn.textContent;
+  btn.textContent = "✔"; btn.classList.add("copied");
+  setTimeout(() => { btn.textContent = original; btn.classList.remove("copied"); }, 1200);
+}
+document.addEventListener("click", e => {
+  const copyBtn = e.target.closest(".btn-copy");
+  if (copyBtn) { copyCode(copyBtn); return; }
+});
 
 // Clic sur un crop → agrandissement plein écran (clic n'importe où pour fermer)
 document.addEventListener("click", e => {

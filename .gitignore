@@ -70,6 +70,9 @@ runs/
 # Uploads runtime de l'app web
 Application/backend/uploads/
 
+# Enregistrements RTSP (Labo/Extension) - fichiers volumineux, regeneres a chaque test
+Application/backend/recordings/
+
 # Dataset specialiste NumeroBIC (6289 images - hors git)
 Application/datasetEnt/
 
@@ -119,3 +122,11 @@ BILAN_*.md
 BILAN_Travail_*.md
 *.crdownload
 Application/dataset/
+
+# Extension navigateur : jamais de cle privee ni de paquet .crx
+# (generes par erreur via "Compresser l'extension" au lieu de
+# "Charger l'extension decompressee" - le mode dev n'en a pas besoin)
+Application/Extension.pem
+Application/Extension.crx
+*.pem
+*.crx
