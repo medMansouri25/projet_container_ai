@@ -111,3 +111,30 @@ objet suivi) : le Labo réexécute OCR sur chaque frame échantillonnée, coût 
 outil de dev GPU local, **à corriger avant toute intégration production à fort volume**
 (cf. PIPELINES.md). Le RTSP (`rtsp.py`, endpoints `/api/labo/rtsp/*`) reste à
 reconstruire ; le front les appelle déjà.
+
+## ADR-20 — RTSP découplé de YOLO/OCR : simple relais MJPEG + enregistrement (2026-09-18)
+
+**Contexte** : suite de la reconstruction ADR-19. Objectif : faire évoluer le Labo vers
+une caméra de téléphone temps réel (flux RTSP) sans dupliquer ni coupler le pipeline de
+détection déjà validé.
+
+**Décision** :
+- `rtsp.py` **ne connaît ni YOLO ni OCR** — son seul rôle est de produire des frames JPEG
+  (aperçu live) et, sur demande, un fichier `.mp4` enregistré sur disque
+  (`Application/backend/recordings/`).
+- Ouverture de connexion **bornée par timeout** (`cv2.VideoCapture(url, cv2.CAP_FFMPEG)`
+  lancé dans un thread avec `.join(8.0)`) : une URL injoignable ne bloque jamais la
+  requête Flask — invariant vérifié par test (échec propre en 8,3 s, serveur resté
+  réactif, session immédiatement réutilisable).
+- YOLO/OCR ne tournent **jamais** sur le flux live (aperçu = relais MJPEG pur, ~15 fps).
+  Seul un enregistrement arrêté est réinjecté dans `/api/labo/detect-video` (paramètre
+  `recording=<nom>`, déjà prévu côté vidéo — ADR-19) : au pipeline, un enregistrement
+  RTSP est indiscernable d'un upload manuel.
+- Registre de sessions en mémoire (`_sessions`, verrouillé) : plusieurs connexions RTSP
+  possibles en parallèle, chacune identifiée par un id opaque.
+
+**Conséquences** : gestion d'erreur testée (URL vide, mal formée, injoignable, session
+inconnue) — toujours une réponse JSON propre, jamais de crash ni de blocage. **Non
+testé** : connexion à une vraie caméra/téléphone (aucun matériel RTSP disponible
+pendant le développement) — le flux live, l'enregistrement réel et l'analyse de bout
+en bout restent à valider par l'utilisateur avant de considérer ce chantier clos.

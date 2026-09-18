@@ -24,6 +24,7 @@ Lancement : python app.py  →  http://localhost:5000
 
 import os
 import sys
+import time
 import uuid
 
 from flask import (Flask, request, render_template, redirect, url_for,
@@ -38,6 +39,7 @@ import ocr
 import char_reader
 import plaque
 import labo
+import rtsp
 
 app = Flask(__name__)
 # Derriere le tunnel Cloudflare : respecter Host / X-Forwarded-Proto pour
@@ -806,6 +808,88 @@ def api_labo_detect_video():
                     pass
 
     return Response(stream_with_context(generate()), mimetype="application/x-ndjson")
+
+
+# ── Labo — caméra RTSP (source découplée, cf. rtsp.py) ────────────────────
+# Ne branche JAMAIS YOLO/OCR sur le flux live : l'aperçu est un simple relais
+# MJPEG. Seul un enregistrement .mp4, une fois arrêté, est réinjecté dans le
+# pipeline vidéo existant (/api/labo/detect-video, paramètre `recording=`).
+
+
+@app.route("/api/labo/rtsp/connect", methods=["POST"])
+def api_labo_rtsp_connect():
+    url = (request.form.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "adresse RTSP manquante"}), 400
+    if not url.lower().startswith("rtsp://"):
+        return jsonify({"error": "l'adresse doit commencer par rtsp://"}), 400
+
+    sid, error = rtsp.create_session(url, RECORDINGS_DIR)
+    if error:
+        return jsonify({"error": error}), 400
+
+    st = rtsp.get_session(sid).status()
+    return jsonify({"session": sid, "connected": st["connected"],
+                    "resolution": st["resolution"], "fps": st["fps"]})
+
+
+@app.route("/api/labo/rtsp/status/<sid>")
+def api_labo_rtsp_status(sid):
+    sess = rtsp.get_session(sid)
+    if sess is None:
+        return jsonify({"error": "session inconnue (déconnectée ou expirée)"}), 404
+    return jsonify(sess.status())
+
+
+@app.route("/api/labo/rtsp/preview/<sid>")
+def api_labo_rtsp_preview(sid):
+    """Relais MJPEG (~15 fps) de la dernière frame lue par la session —
+    jamais de YOLO/OCR ici. Le navigateur ne sait pas lire du RTSP nativement ;
+    ce flux est affichable directement dans <img src="…">."""
+    sess = rtsp.get_session(sid)
+    if sess is None:
+        return "session inconnue", 404
+
+    def generate():
+        while True:
+            sess2 = rtsp.get_session(sid)
+            if sess2 is None or not sess2.connected:
+                break
+            frame = sess2.latest_jpeg()
+            if frame is not None:
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
+            time.sleep(0.06)
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+@app.route("/api/labo/rtsp/record/start", methods=["POST"])
+def api_labo_rtsp_record_start():
+    sess = rtsp.get_session(request.form.get("session", ""))
+    if sess is None:
+        return jsonify({"error": "session inconnue (déconnectée ou expirée)"}), 404
+    name = sess.start_recording()
+    if name is None:
+        return jsonify({"error": "un enregistrement est déjà en cours"}), 400
+    return jsonify({"recording": name})
+
+
+@app.route("/api/labo/rtsp/record/stop", methods=["POST"])
+def api_labo_rtsp_record_stop():
+    sess = rtsp.get_session(request.form.get("session", ""))
+    if sess is None:
+        return jsonify({"error": "session inconnue (déconnectée ou expirée)"}), 404
+    name, seconds, frames = sess.stop_recording()
+    if name is None:
+        return jsonify({"error": "aucun enregistrement en cours"}), 400
+    return jsonify({"recording": name, "seconds": seconds, "frames": frames})
+
+
+@app.route("/api/labo/rtsp/disconnect", methods=["POST"])
+def api_labo_rtsp_disconnect():
+    sid = request.form.get("session", "")
+    rtsp.remove_session(sid)
+    return jsonify({"disconnected": sid})
 
 
 @app.route("/uploads/<path:name>")

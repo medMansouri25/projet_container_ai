@@ -17,7 +17,7 @@ En production : **[containerai-marsa-maroc.online](https://containerai-marsa-mar
 |---|---|---|
 | **V1 — Image** | Scanner BIC : upload/caméra → détection → OCR → validation → historique + dashboard | ✅ **déployée en production** |
 | **V2 — Vidéo** | Import vidéo → échantillonnage 5 FPS → même pipeline que l'image → agrégation/déduplication des codes | 🧪 expérimental, dans le **Labo** (`/labo`), pas encore intégré à l'app de production |
-| **Caméra RTSP** | Téléphone en source caméra distante → aperçu live → enregistrement → pipeline vidéo | 🔜 à construire (front déjà câblé) |
+| **Caméra RTSP** | Téléphone en source caméra distante → aperçu live → enregistrement → pipeline vidéo | 🧪 implémenté dans le Labo, **non testé avec une vraie caméra** (pas de matériel disponible pendant le dev) |
 | **V3 — Extension navigateur** | Interface finale "BIC Detector" pilotant le backend local | 🔜 à construire |
 
 Détail complet, invariants et questions ouvertes : [SDD/SPEC_V2.md](SDD/SPEC_V2.md) ·

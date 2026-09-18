@@ -39,7 +39,7 @@ Navigateur / téléphone
 | **Pipeline détection** | 3 étages : conteneur → zone BIC → lecture | `Application/backend/pipeline/` |
 | **Persistance** | Table `scans` (dossiers validés) | `Application/backend/db.py` |
 | **ML tooling** | dataset versionné, entraînement, évaluation, benchmarks | `Application/ml/` |
-| **Labo** (dev, local uniquement — jamais déployé sur le VPS) | comparaison de modèles, image/vidéo/RTSP, écrit **jamais** dans PostgreSQL | `Application/backend/labo.py`, `labo.html` (+ `rtsp.py` à venir) |
+| **Labo** (dev, local uniquement — jamais déployé sur le VPS) | comparaison de modèles, image/vidéo/RTSP, écrit **jamais** dans PostgreSQL | `Application/backend/labo.py`, `labo.html`, `rtsp.py` (source caméra découplée de YOLO/OCR) |
 
 ### Séparation actuelle vs invariant I1 (SPEC_V2)
 

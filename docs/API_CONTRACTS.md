@@ -166,11 +166,27 @@ cluster, jamais proche-en-proche).
 Testé de bout en bout sur une vidéo réelle (fournie par le tuteur) : `CAIU6563528`
 détecté sur 14/34 frames, chiffre de contrôle réparé automatiquement, `valid:true`.
 
-### RTSP (`/api/labo/rtsp/*`) — **non implémenté**
+### RTSP (`/api/labo/rtsp/*`, ajouté 2026-09-18)
 
-Le front (`labo.html`, onglet Caméra RTSP) appelle déjà `connect` / `status` /
-`preview/<sid>` / `record/start` / `record/stop` / `disconnect`, mais ces routes et le
-module `rtsp.py` restent à construire (prochain chantier — cf. ROADMAP.md).
+Source caméra découplée de YOLO/OCR (`rtsp.py`) : aperçu live MJPEG, enregistrement
+`.mp4`, réinjecté dans `/api/labo/detect-video` (paramètre `recording=`, cf. ci-dessus)
+— aucune logique de détection dupliquée.
+
+| Route | Entrée | Sortie |
+|---|---|---|
+| `POST /api/labo/rtsp/connect` | `url` (form, doit commencer par `rtsp://`) | `200 {session, connected, resolution, fps}` ou `400 {error}` |
+| `GET /api/labo/rtsp/status/<sid>` | — | `200 {connected, error, resolution, fps, recording}` ou `404` |
+| `GET /api/labo/rtsp/preview/<sid>` | — | flux `multipart/x-mixed-replace` (MJPEG, ~15 fps) |
+| `POST /api/labo/rtsp/record/start` | `session` (form) | `200 {recording: "recording_AAAA-MM-JJ_HH-MM-SS.mp4"}` |
+| `POST /api/labo/rtsp/record/stop` | `session` (form) | `200 {recording, seconds, frames}` |
+| `POST /api/labo/rtsp/disconnect` | `session` (form) | `200 {disconnected}` (no-op si session déjà inconnue) |
+
+**Ouverture bornée par timeout** : `cv2.VideoCapture(url, cv2.CAP_FFMPEG)` tourne dans un
+thread avec `.join(8.0)` — une URL injoignable ne bloque jamais la requête Flask.
+Testé : URL syntaxiquement valide mais injoignable → erreur propre en 8,3 s, serveur
+resté réactif, réutilisable immédiatement pour une nouvelle tentative. **Non testé** :
+connexion à une vraie caméra/téléphone RTSP (pas de matériel disponible pendant le
+développement) — le flux live reste à valider par l'utilisateur.
 
 ## Contrat cible des services IA (SPEC_V2 §8 — à implémenter)
 

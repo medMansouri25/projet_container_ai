@@ -32,19 +32,24 @@ extension **enfichable** de la capture (invariant I10).
 ### Hygiène (15-16/07)
 - Purge 42 Go d'artefacts régénérables (ADR-9) ; documentation `docs/` structurée
 
-### Labo — multi-code, vidéo (20/08 → 18/09)
+### Labo — multi-code, vidéo, RTSP (20/08 → 18/09)
 - Détection multi-code config11 + OCR caractère tuteur augmenté intégrés au Labo (ADR-18)
 - **Labo vidéo expérimental** : import vidéo → échantillonnage 5 FPS → pipeline image
   réutilisé tel quel → agrégation/déduplication des codes BIC (ADR-19). Pas de tracking
   d'objet (dédup a posteriori) — écart assumé avec la cible SPEC_V2 §7, voir PIPELINES.md.
-  Reconstruit le 18/09 après perte du disque local ayant porté le branchement initial.
+- **Labo caméra RTSP** : `rtsp.py`, connexion bornée par timeout, aperçu MJPEG,
+  enregistrement `.mp4` réinjecté dans le Labo vidéo (ADR-20). Gestion d'erreur testée
+  (URL invalide/injoignable) ; connexion à une vraie caméra **non testée** (pas de
+  matériel disponible) — à valider par l'utilisateur.
+  Les deux chantiers reconstruits le 18/09 après perte du disque local ayant porté le
+  branchement initial (jamais poussé sur GitHub).
 
 ## 🔜 Prochaines étapes (ordre suggéré)
 
 | # | Chantier | Contenu | Dépendances |
 |---|---|---|---|
-| 1a | **Labo caméra RTSP** | `rtsp.py` (connexion, aperçu MJPEG, enregistrement) → réinjection dans le Labo vidéo existant ; front déjà câblé (`labo.html`) | aucune — voir [PIPELINES.md](PIPELINES.md), [détail partie labo.md](../détail%20partie%20labo.md) |
-| 1b | **Extension navigateur "BIC Detector"** | interface finale (RTSP → live → enregistrement → analyse → résultats), communique avec le backend local existant, sans dupliquer YOLO/OCR | 1a (réutilise les endpoints RTSP) |
+| 1a | **Validation RTSP réelle** | Tester `/labo` avec une vraie caméra/téléphone RTSP (connexion, live, enregistrement, analyse) — non fait faute de matériel pendant le dev | aucune |
+| 1b | **Extension navigateur "BIC Detector"** | interface finale (RTSP → live → enregistrement → analyse → résultats), communique avec le backend local existant, sans dupliquer YOLO/OCR | 1a (réutilise les endpoints RTSP, à valider d'abord) |
 | 1c | **V2 vidéo — tracking réel** | `model.track()` (ByteTrack), sélection de frame nette, OCR **unique** par objet suivi (le Labo actuel réexécute l'OCR par frame échantillonnée) | 1a/1b validés |
 | 2 | **Extraction service API Container** | sortir le pipeline conteneur en service au contrat SPEC (image→JSON) ; l'app devient orchestrateur | facilite 3-5 |
 | 3 | **API Plaque** | détection + lecture plaque (nouveau format marocain) | **Q2 : dataset** |

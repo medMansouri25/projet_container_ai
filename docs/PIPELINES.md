@@ -93,7 +93,7 @@ image (`run_detect` + `read_zones`, étages 1-3 + validation ISO 6346 ci-dessus)
 aucune logique YOLO/OCR dupliquée.
 
 ```
-Vidéo importée (fichier, ou futur enregistrement RTSP)
+Vidéo importée (fichier, ou enregistrement RTSP — ADR-20, non testé avec caméra réelle)
   ▼
 Échantillonnage FIXE 5 FPS (VIDEO_ANALYSIS_FPS)
   │   cap.grab() sur TOUTES les frames (avance sans décoder, gratuit)
