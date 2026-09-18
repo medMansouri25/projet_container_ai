@@ -1,6 +1,6 @@
 # AI_MODELS — Modèles IA
 
-> **Dernière mise à jour** : 2026-07-18
+> **Dernière mise à jour** : 2026-09-18
 
 ## Convention de versionnement (commune à tous les modèles)
 
@@ -79,6 +79,21 @@ Pas un modèle entraîné par nous — bibliothèque durcie par ~600 lignes de l
 orientation par caractères, masque HSV adaptatif, lecteur de colonnes empilées,
 normalisation par position, scoring, **validation/réparation/solveur ISO 6346**
 (`Application/backend/pipeline/ocr.py`). Modèles EasyOCR cuits dans l'image Docker.
+
+## Modèles Labo (expérimental — pas encore déployés en production)
+
+Utilisés uniquement par `/labo` (comparaison de modèles, image/vidéo), jamais par
+`/scan`/`/api/scan`. Pointeurs explicites vers Application/models/, suivis en git via
+exception `.gitignore`, à mettre à jour à chaque nouvel entraînement jugé meilleur.
+
+| Fichier | Contenu | Rôle |
+|---|---|---|
+| `models/bestYolo.pt` | = `models/multicode/best.pt` (config11, YOLO11s 960px, 5 classes Hnumber/Hpnumber/Htype/Vnumber/Vtype) | Détecteur **multi-code** — détecte tous les codes visibles d'une image/frame (ADR-18), pas seulement le meilleur |
+| `models/bestOCR.pt` | = `RessourceFourni/.../ocr_models/yolov8s_augmented_best.pt` | Détecteur de caractères (36 classes) du tuteur — meilleur moteur OCR mesuré (ADR-17), insensible à l'orientation |
+
+Exposés dans `/api/labo/models` sous les id `best/yolo` / `best/ocr` (préfixe ★).
+Validés de bout en bout sur vidéo réelle le 2026-09-18 (ADR-19) : `CAIU6563528`
+détecté et validé ISO 6346 après réparation du chiffre de contrôle.
 
 ## Historique / purgé
 

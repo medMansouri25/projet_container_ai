@@ -27,7 +27,7 @@ import sys
 import uuid
 
 from flask import (Flask, request, render_template, redirect, url_for,
-                   send_from_directory, jsonify)
+                   send_from_directory, jsonify, Response, stream_with_context)
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pipeline"))
@@ -37,6 +37,7 @@ import detector
 import ocr
 import char_reader
 import plaque
+import labo
 
 app = Flask(__name__)
 # Derriere le tunnel Cloudflare : respecter Host / X-Forwarded-Proto pour
@@ -57,6 +58,13 @@ def cors(response):
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Labo (outil de dev/évaluation — /labo, /api/labo/*) : jamais utilisé par le
+# pipeline métier ci-dessus, n'écrit jamais dans PostgreSQL.
+LABO_MODELS_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
+RECORDINGS_DIR = os.path.join(os.path.dirname(__file__), "recordings")
+os.makedirs(RECORDINGS_DIR, exist_ok=True)
+LABO_OCR_TIME_BUDGET = 6.0  # EasyOCR : budget réduit vs les 25 s de prod (nombreuses zones/frames en labo)
 
 ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
@@ -645,6 +653,159 @@ def _compute_stats(scans: list) -> dict:
         "per_day": per_day,
         "top_owners": top_owners,
     }
+
+
+# ── Labo (outil de dev : comparaison de modèles, image/vidéo) ────────────
+# Ne touche jamais à PostgreSQL ni au pipeline métier ci-dessus — vit à côté
+# de l'app, page /labo + endpoints /api/labo/*. Cf. docs/PIPELINES.md.
+
+
+def _labo_read_fn(engines_by_id, ocr_engine):
+    """Construit read_fn(crop, vertical) -> {bic, valid, corrected, raw}
+    pour le moteur OCR choisi dans le Labo (contrat attendu par
+    labo.read_zones). EasyOCR (moteur principal, budget réduit pour rester
+    interactif) ou un détecteur de caractères (tuteur / bestOCR) — modèle mis
+    en cache par labo._get_model (cache par CHEMIN, contrairement au cache à
+    un seul emplacement de char_reader._get_model, inadapté ici puisque le
+    Labo doit pouvoir basculer entre plusieurs moteurs caractère)."""
+    if not ocr_engine or ocr_engine == "easyocr":
+        def read_fn(crop, vertical):
+            r = ocr.extract_bic(crop, vertical=vertical, is_zone=True,
+                                time_budget=LABO_OCR_TIME_BUDGET)
+            return {"bic": r["bic"], "valid": r["valid"],
+                   "corrected": r["corrected"], "raw": r["raw"]}
+        return read_fn
+
+    entry = engines_by_id.get(ocr_engine)
+    if entry is None or not entry.get("path"):
+        raise ValueError(f"moteur OCR inconnu : {ocr_engine}")
+    # Pré-chargé AVANT la boucle OCR : un modèle illisible lève ici une
+    # exception (→ JSON propre), pas au milieu du traitement (→ page HTML
+    # Flask brute que le front afficherait comme "Unexpected token '<'").
+    model = labo._get_model(entry["path"])
+
+    def read_fn(crop, vertical):
+        dets = char_reader._detections(crop, model)
+        if not dets:
+            return {"bic": None, "valid": False, "corrected": False, "raw": []}
+        lines = char_reader._group_lines(dets, vertical)
+        res = ocr.resolve_bic(lines)
+        return {"bic": res["bic"], "valid": res["valid"],
+               "corrected": res["corrected"], "raw": lines}
+    return read_fn
+
+
+@app.route("/labo")
+def labo_page():
+    return send_from_directory(os.path.dirname(__file__), "labo.html")
+
+
+@app.route("/api/labo/models")
+def api_labo_models():
+    models = [{k: v for k, v in m.items() if k != "path"}
+             for m in labo.discover_models(LABO_MODELS_DIR)]
+    engines = [{k: v for k, v in e.items() if k != "path"}
+              for e in labo.discover_ocr_engines(LABO_MODELS_DIR)]
+    return jsonify({"models": models, "ocr_engines": engines})
+
+
+@app.route("/api/labo/detect", methods=["POST"])
+def api_labo_detect():
+    file = request.files.get("image")
+    if not file or not file.filename:
+        return jsonify({"error": "image manquante"}), 400
+
+    model_id = request.form.get("model_id", "")
+    do_ocr = request.form.get("ocr", "1") == "1"
+    ocr_engine = request.form.get("ocr_engine", "easyocr")
+
+    name = f"labo_{uuid.uuid4().hex[:12]}.jpg"
+    image_path = os.path.join(UPLOAD_FOLDER, name)
+    file.save(image_path)
+
+    by_id = {m["id"]: m for m in labo.discover_models(LABO_MODELS_DIR)}
+    ids = [i for i in model_id.split(",") if i]
+    matches = [(i, by_id[i]["path"], by_id[i].get("imgsz", 640))
+              for i in ids if i in by_id]
+    if not matches:
+        return jsonify({"error": f"modèle inconnu : {model_id}"}), 400
+
+    try:
+        engines = {e["id"]: e for e in labo.discover_ocr_engines(LABO_MODELS_DIR)}
+        read_fn = _labo_read_fn(engines, ocr_engine) if do_ocr else None
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    if len(matches) == 1:
+        _, path, imgsz = matches[0]
+        det = labo.run_detect(path, image_path, conf=0.15, imgsz=imgsz)
+    else:
+        det = labo.run_detect_ensemble(matches, image_path, conf=0.15)
+
+    import cv2
+    img = cv2.imread(image_path)
+    zones, results = labo.read_zones(img, det["boxes"], read_fn, do_ocr=do_ocr)
+
+    return jsonify({
+        "time_ms": det["time_ms"],
+        "boxes": det["boxes"],
+        "annotated": (f"data:image/jpeg;base64,{det['annotated_b64']}"
+                     if det["annotated_b64"] else None),
+        "zones": zones,
+        "ocr": results,
+    })
+
+
+@app.route("/api/labo/detect-video", methods=["POST"])
+def api_labo_detect_video():
+    model_id = request.form.get("model_id", "")
+    ocr_engine = request.form.get("ocr_engine", "easyocr")
+    recording = request.form.get("recording")
+
+    by_id = {m["id"]: m for m in labo.discover_models(LABO_MODELS_DIR)}
+    entry = by_id.get(model_id)
+    if entry is None:
+        return jsonify({"error": f"modèle inconnu : {model_id}"}), 400
+
+    if recording:
+        # Enregistrement RTSP déjà présent côté serveur (Labo caméra) : pas
+        # d'upload, et le fichier est conservé (réutilisable, cleanup=False).
+        video_path = os.path.join(RECORDINGS_DIR, os.path.basename(recording))
+        if not os.path.exists(video_path):
+            return jsonify({"error": "enregistrement introuvable"}), 404
+        cleanup = False
+    else:
+        file = request.files.get("video")
+        if not file or not file.filename:
+            return jsonify({"error": "vidéo manquante"}), 400
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in labo.VIDEO_EXTS:
+            return jsonify({"error": f"format vidéo non supporté : {ext}"}), 400
+        name = f"labo_{uuid.uuid4().hex[:12]}{ext}"
+        video_path = os.path.join(UPLOAD_FOLDER, name)
+        file.save(video_path)
+        cleanup = True
+
+    try:
+        engines = {e["id"]: e for e in labo.discover_ocr_engines(LABO_MODELS_DIR)}
+        read_fn = _labo_read_fn(engines, ocr_engine)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    def generate():
+        import json as _json
+        try:
+            for event in labo.stream_video_detection(
+                    video_path, entry["path"], entry.get("imgsz", 640), read_fn):
+                yield _json.dumps(event) + "\n"
+        finally:
+            if cleanup:
+                try:
+                    os.remove(video_path)
+                except OSError:
+                    pass
+
+    return Response(stream_with_context(generate()), mimetype="application/x-ndjson")
 
 
 @app.route("/uploads/<path:name>")

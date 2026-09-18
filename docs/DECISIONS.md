@@ -1,6 +1,6 @@
 # DECISIONS — Architecture Decision Records (ADR)
 
-> **Dernière mise à jour** : 2026-07-18
+> **Dernière mise à jour** : 2026-09-18
 > Format : contexte → décision → conséquences. Une décision n'est modifiée que par un nouvel ADR qui la remplace.
 
 ---
@@ -75,3 +75,39 @@
 ## ADR-10 — Méthode de travail : AB Method + benchmarks avant bascule (transverse)
 
 **Décision** : tout chantier passe par grill (décisions explicites) → tracker → missions TDD (mocks aux frontières ultralytics/easyocr/psycopg2, tests supprimés après green) ; toute bascule de moteur/architecture est décidée par **benchmark chiffré sur données réelles** (cf. ADR-2, ADR-6, ADR-7).
+
+## ADR-19 — Labo vidéo reconstruit sans tracking : dédup a posteriori plutôt que suivi d'objet (2026-09-18)
+
+**Contexte** : le disque local portant l'intégration du Labo (`app.py` branché sur
+`labo.py`/`labo.html`, module `rtsp.py`) est tombé en panne — seuls `labo.py`
+(cœur détection/OCR) et `labo.html` (front déjà complet, 3 onglets Image/Vidéo/RTSP)
+avaient été poussés sur GitHub ; le branchement des routes ne l'avait jamais été. Cette
+note documente la reconstruction du pipeline **vidéo** (le RTSP reste à refaire,
+prochain chantier).
+
+**Décision** :
+- Reconstruction à l'identique du contrat déjà attendu par `labo.html` (`/api/labo/models`,
+  `/api/labo/detect`, `/api/labo/detect-video` en NDJSON) plutôt que redesign — le front
+  existant contraint et valide l'implémentation.
+- **Pas de tracking d'objet** dans cette version : chaque frame échantillonnée à
+  `VIDEO_ANALYSIS_FPS=5` est traitée indépendamment par le pipeline image existant
+  (`run_detect` + `read_zones`, aucune duplication) ; la déduplication d'un même
+  conteneur filmé sur plusieurs frames se fait **après coup** sur les codes lus
+  (`_consolidate_codes`, comparaison au représentant du cluster, ≤3 caractères d'écart
+  à longueur égale — jamais de chaînage proche-en-proche pour ne pas fusionner deux
+  conteneurs différents).
+- Modèles pointés explicitement comme « meilleurs » (`Application/models/bestYolo.pt` =
+  config11 multi-code, `bestOCR.pt` = OCR caractère tuteur best mesuré ADR-17) exposés
+  comme entrées `best/yolo` / `best/ocr` de premier plan dans `/api/labo/models`, en plus
+  des entrées déjà découvertes automatiquement (fichiers identiques par contenu).
+- Budget EasyOCR réduit à 6 s (`LABO_OCR_TIME_BUDGET`) contre 25 s en production : un
+  détecteur multi-code peut remonter jusqu'à 20 zones par frame, x5 frames/s — le budget
+  de prod (pensé pour 1 zone par scan) ferait exploser le temps de traitement.
+
+**Conséquences** : validé de bout en bout sur vidéo réelle (matériel tuteur) —
+`CAIU6563528` détecté sur 14/34 frames, chiffre de contrôle réparé automatiquement.
+Écart assumé avec la cible SPEC_V2 §7 (tracking `model.track()`, une seule lecture par
+objet suivi) : le Labo réexécute OCR sur chaque frame échantillonnée, coût acceptable en
+outil de dev GPU local, **à corriger avant toute intégration production à fort volume**
+(cf. PIPELINES.md). Le RTSP (`rtsp.py`, endpoints `/api/labo/rtsp/*`) reste à
+reconstruire ; le front les appelle déjà.

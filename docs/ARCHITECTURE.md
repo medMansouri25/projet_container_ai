@@ -1,6 +1,6 @@
 # ARCHITECTURE — Architecture logicielle
 
-> **Dernière mise à jour** : 2026-07-16
+> **Dernière mise à jour** : 2026-09-18
 
 ## Architecture actuelle (V1 en production)
 
@@ -39,6 +39,7 @@ Navigateur / téléphone
 | **Pipeline détection** | 3 étages : conteneur → zone BIC → lecture | `Application/backend/pipeline/` |
 | **Persistance** | Table `scans` (dossiers validés) | `Application/backend/db.py` |
 | **ML tooling** | dataset versionné, entraînement, évaluation, benchmarks | `Application/ml/` |
+| **Labo** (dev, local uniquement — jamais déployé sur le VPS) | comparaison de modèles, image/vidéo/RTSP, écrit **jamais** dans PostgreSQL | `Application/backend/labo.py`, `labo.html` (+ `rtsp.py` à venir) |
 
 ### Séparation actuelle vs invariant I1 (SPEC_V2)
 

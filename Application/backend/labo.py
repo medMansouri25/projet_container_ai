@@ -83,6 +83,10 @@ def discover_ocr_engines(models_root):
     """
     engines = [{"id": "easyocr", "label": "EasyOCR (actuel)", "path": None,
                 "group": "mien"}]
+    best_ocr = os.path.join(models_root, "bestOCR.pt")
+    if os.path.exists(best_ocr):
+        engines.append({"id": "best/ocr", "label": "★ Meilleur OCR (bestOCR.pt)",
+                        "path": best_ocr, "group": "mien"})
     pattern = os.path.join(_tutor_root(models_root), "*", "ocr_models", "*.pt")
     for path in sorted(glob.glob(pattern)):
         name = os.path.splitext(os.path.basename(path))[0]
@@ -143,6 +147,17 @@ def discover_models(models_root):
                 "id": mid, "label": label, "path": pth,
                 "map50_95": None, "imgsz": imgsz, "group": "mien",
             })
+
+    # Meilleur modèle courant, placé directement sous Application/models/ par
+    # commodité (identique en contenu à multicode/config11 au moment de son
+    # ajout, mais listé explicitement pour rester le pointeur "à jour" même
+    # si un futur entraînement le remplace sans toucher au dossier multicode/).
+    best_pt = os.path.join(models_root, "bestYolo.pt")
+    if os.path.exists(best_pt):
+        models.append({
+            "id": "best/yolo", "label": "★ Meilleur modèle (bestYolo.pt)",
+            "path": best_pt, "map50_95": None, "imgsz": 960, "group": "mien",
+        })
 
     models.extend(discover_tutor_region_models(models_root))
     return models
@@ -433,3 +448,156 @@ def run_detect_ensemble(models, image_path, conf=0.15, iou_thr=0.5):
             kept.append(b)
 
     return {"time_ms": total_ms, "boxes": kept, "annotated_b64": best_annot}
+
+
+# ── Vidéo — mêmes run_detect()/read_zones() que l'image, frames échantillonnées ──
+
+VIDEO_ANALYSIS_FPS = 5          # configurable : frames/s réellement analysées
+VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
+
+
+def _best_crop_for(zones, bic):
+    """Parmi les zones de la frame courante, celle dont l'OCR a produit `bic`
+    (illustre un nouveau code du résultat consolidé avec un crop représentatif)."""
+    for z in zones:
+        if z.get("bic") == bic:
+            return z.get("crop")
+    return None
+
+
+def _consolidate_codes(codes, max_diff=3):
+    """Regroupe les codes proches (même conteneur physique, lectures OCR
+    légèrement différentes d'une frame à l'autre à cause du flou de
+    mouvement — ex. MAMU6698882 / HMMU6698882). Chaque code est comparé au
+    REPRÉSENTANT d'un cluster existant, jamais de chaînage proche-en-proche
+    (sinon deux conteneurs réellement différents finiraient fusionnés sur une
+    vidéo longue). "proche" = même longueur ET <= max_diff caractères
+    différents à position égale. Représentant = le meilleur
+    (authentique > nombre de votes > confiance).
+
+    `codes` : liste de {"bic","valid","corrected","conf","count","crop","first_time"}.
+    Retourne les clusters (même forme + "candidates"/"variants"), triés
+    authentiques d'abord puis par nombre de votes.
+    """
+    def _rank(c):
+        return (c["valid"], c["count"], c["conf"])
+
+    clusters = []
+    for c in sorted(codes, key=lambda c: -c["count"]):
+        placed = False
+        for cl in clusters:
+            rep_bic = cl["rep"]["bic"]
+            if len(rep_bic) == len(c["bic"]):
+                diff = sum(1 for a, b in zip(rep_bic, c["bic"]) if a != b)
+                if diff <= max_diff:
+                    cl["members"].append(c)
+                    if _rank(c) > _rank(cl["rep"]):
+                        cl["rep"] = c
+                    placed = True
+                    break
+        if not placed:
+            clusters.append({"rep": c, "members": [c]})
+
+    out = []
+    for cl in clusters:
+        rep = dict(cl["rep"])
+        rep["candidates"] = sorted(cl["members"], key=lambda c: -c["count"])
+        rep["variants"] = [m for m in rep["candidates"] if m["bic"] != rep["bic"]]
+        out.append(rep)
+    out.sort(key=lambda c: (not c["valid"], -c["count"]))
+    return out
+
+
+def stream_video_detection(video_path, model_path, imgsz, read_fn,
+                           conf=0.15, analysis_fps=VIDEO_ANALYSIS_FPS,
+                           want_crops=True):
+    """Générateur — traite une vidéo avec le MÊME pipeline que l'image
+    (run_detect + read_zones, aucune logique dupliquée), en n'analysant
+    qu'`analysis_fps` frames/s quel que soit le FPS d'origine.
+
+    yield des dicts d'événements (l'appelant les sérialise, une ligne JSON
+    par événement — NDJSON) :
+      {"type": "meta", ...}      une fois, avant traitement
+      {"type": "progress", ...}  une fois par frame analysée
+      {"type": "done", ...}      une fois, à la fin
+      {"type": "error", ...}     si la vidéo est illisible
+
+    `read_fn` est injecté par l'appelant (moteur OCR choisi, cf. read_zones).
+    Générateur pur, sans état Flask : réutilisable tel quel par un
+    enregistrement RTSP (même fichier vidéo en entrée qu'un upload manuel).
+    """
+    import time
+
+    import cv2
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        yield {"type": "error",
+               "error": "vidéo illisible (codec non supporté ou fichier corrompu)"}
+        return
+
+    orig_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    step = max(1, round(orig_fps / analysis_fps))
+    to_analyze = (total_frames // step) if total_frames else 0
+
+    yield {"type": "meta", "orig_fps": round(orig_fps, 1), "analysis_fps": analysis_fps,
+           "total_frames": total_frames, "to_analyze": to_analyze,
+           "width": width, "height": height,
+           "duration": round(total_frames / orig_fps, 1) if orig_fps else 0}
+
+    agg = {}   # bic -> {bic, valid, corrected, conf, count, crop, first_time}
+    idx = 0
+    analyzed = 0
+    t0 = time.perf_counter()
+
+    try:
+        while True:
+            grabbed = cap.grab()              # avance sans décoder — frames sautées gratuites
+            if not grabbed:
+                break
+            idx += 1
+            if idx % step != 0:
+                continue
+            ok, frame = cap.retrieve()        # décode SEULEMENT la frame retenue
+            if not ok:
+                continue
+
+            analyzed += 1
+            det = run_detect(model_path, frame, conf=conf, imgsz=imgsz, annotate=False)
+            zones, results = read_zones(frame, det["boxes"], read_fn, do_ocr=True,
+                                        want_crops=want_crops)
+
+            t_sec = round(idx / orig_fps, 2) if orig_fps else 0.0
+            for r in results:
+                bic = r["bic"]
+                entry = agg.get(bic)
+                if entry is None:
+                    agg[bic] = entry = {"bic": bic, "valid": r["valid"],
+                                        "corrected": r["corrected"], "conf": r["conf"],
+                                        "count": 0, "crop": _best_crop_for(zones, bic),
+                                        "first_time": t_sec}
+                entry["count"] += 1
+                # meilleure occurrence : authentique gagne, sinon meilleure confiance
+                if (r["valid"] and not entry["valid"]) or \
+                   (r["valid"] == entry["valid"] and r["conf"] > entry["conf"]):
+                    entry["valid"], entry["conf"] = r["valid"], r["conf"]
+                    entry["corrected"] = r["corrected"]
+                    crop = _best_crop_for(zones, bic)
+                    if crop:
+                        entry["crop"] = crop
+
+            elapsed = time.perf_counter() - t0
+            proc_fps = round(analyzed / elapsed, 1) if elapsed > 0 else 0.0
+            yield {"type": "progress", "frame": idx, "analyzed": analyzed,
+                   "to_analyze": to_analyze or analyzed,
+                   "pct": round(analyzed / to_analyze * 100) if to_analyze else 0,
+                   "proc_fps": proc_fps, "codes": len(agg)}
+    finally:
+        cap.release()                          # libère le fichier dans tous les cas
+
+    elapsed_total = round(time.perf_counter() - t0, 1)
+    codes = _consolidate_codes(list(agg.values()))
+    yield {"type": "done", "analyzed": analyzed, "elapsed": elapsed_total, "codes": codes}

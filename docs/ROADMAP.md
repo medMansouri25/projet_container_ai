@@ -1,6 +1,6 @@
 # ROADMAP — Évolution du projet
 
-> **Dernière mise à jour** : 2026-07-16
+> **Dernière mise à jour** : 2026-09-18
 
 ## Trajectoire (SPEC_V2 §4)
 
@@ -32,11 +32,20 @@ extension **enfichable** de la capture (invariant I10).
 ### Hygiène (15-16/07)
 - Purge 42 Go d'artefacts régénérables (ADR-9) ; documentation `docs/` structurée
 
+### Labo — multi-code, vidéo (20/08 → 18/09)
+- Détection multi-code config11 + OCR caractère tuteur augmenté intégrés au Labo (ADR-18)
+- **Labo vidéo expérimental** : import vidéo → échantillonnage 5 FPS → pipeline image
+  réutilisé tel quel → agrégation/déduplication des codes BIC (ADR-19). Pas de tracking
+  d'objet (dédup a posteriori) — écart assumé avec la cible SPEC_V2 §7, voir PIPELINES.md.
+  Reconstruit le 18/09 après perte du disque local ayant porté le branchement initial.
+
 ## 🔜 Prochaines étapes (ordre suggéré)
 
 | # | Chantier | Contenu | Dépendances |
 |---|---|---|---|
-| 1 | **V2 vidéo — capture & tracking** | frames caméra échantillonnées, `model.track()` (ByteTrack), sélection de frame nette, OCR unique par objet suivi | aucune — voir [PIPELINES.md](PIPELINES.md) |
+| 1a | **Labo caméra RTSP** | `rtsp.py` (connexion, aperçu MJPEG, enregistrement) → réinjection dans le Labo vidéo existant ; front déjà câblé (`labo.html`) | aucune — voir [PIPELINES.md](PIPELINES.md), [détail partie labo.md](../détail%20partie%20labo.md) |
+| 1b | **Extension navigateur "BIC Detector"** | interface finale (RTSP → live → enregistrement → analyse → résultats), communique avec le backend local existant, sans dupliquer YOLO/OCR | 1a (réutilise les endpoints RTSP) |
+| 1c | **V2 vidéo — tracking réel** | `model.track()` (ByteTrack), sélection de frame nette, OCR **unique** par objet suivi (le Labo actuel réexécute l'OCR par frame échantillonnée) | 1a/1b validés |
 | 2 | **Extraction service API Container** | sortir le pipeline conteneur en service au contrat SPEC (image→JSON) ; l'app devient orchestrateur | facilite 3-5 |
 | 3 | **API Plaque** | détection + lecture plaque (nouveau format marocain) | **Q2 : dataset** |
 | 4 | **Linking engine** | dossier de passage multi-entités, fenêtre contextuelle + clé N° d'Opération | **Q3** ; 2-3 |

@@ -1,6 +1,6 @@
 # SPEC — Vision globale du projet
 
-> **Dernière mise à jour** : 2026-07-16 · Source de vérité détaillée : [SDD/SPEC_V2.md](../SDD/SPEC_V2.md)
+> **Dernière mise à jour** : 2026-09-18 · Source de vérité détaillée : [SDD/SPEC_V2.md](../SDD/SPEC_V2.md)
 
 ## Vision
 
@@ -41,7 +41,11 @@
 
 - Services IA manquants : **Plaque**, **Driver (CIN/permis)**, **Documents** (DUM, booking…)
 - **Linking engine** (dossier de passage multi-entités) : non commencé — voir [LINKING_ENGINE.md](LINKING_ENGINE.md)
-- **Vidéo + tracking** : non commencé — voir [PIPELINES.md](PIPELINES.md)
+- **Vidéo** : pipeline d'échantillonnage + réutilisation du pipeline image existe en
+  expérimental dans le Labo (`/labo`, non déployé en production) ; le **tracking** réel
+  (`model.track()`, une lecture par objet suivi) reste non commencé — voir [PIPELINES.md](PIPELINES.md)
+- **Caméra RTSP** : câblé côté front (`labo.html`) mais le module `rtsp.py` et ses
+  endpoints restent à construire
 - Authentification agents : hors périmètre V1 (question ouverte Q4)
 
 ## Invariants absolus (SPEC_V2 §13 — résumé)

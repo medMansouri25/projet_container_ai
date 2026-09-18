@@ -1,6 +1,6 @@
 # API_CONTRACTS — Contrats REST
 
-> **Dernière mise à jour** : 2026-07-18 · Base : `https://api.containerai-marsa-maroc.online`
+> **Dernière mise à jour** : 2026-09-18 · Base : `https://api.containerai-marsa-maroc.online`
 
 ## API actuelle (V1, implémentée dans `Application/backend/app.py`)
 
@@ -99,6 +99,78 @@ Sert les images uploadées/annotées (volume persistant VPS).
 ### Routes HTML (usage direct sans front Vercel)
 
 `GET /` (scanner) · `POST /scan` · `POST /confirm` · `GET /history` · `GET /dashboard` — mêmes traitements, rendu Jinja.
+
+## Labo (outil de dev — comparaison de modèles, local uniquement)
+
+`/labo` + `/api/labo/*` : outil d'évaluation, **jamais** de logique métier ni d'écriture
+PostgreSQL. Reconstruit le 2026-09-18 après perte du disque local (le code n'avait
+jamais été poussé sur GitHub) — voir [DECISIONS.md](DECISIONS.md) ADR-19 et le guide
+d'implémentation détaillé : [détail partie labo.md](../détail%20partie%20labo.md).
+
+### GET /labo
+
+Sert `labo.html` (page statique autonome, JS vanilla, 3 onglets : Image / Vidéo / Caméra RTSP
+— l'onglet RTSP est câblé côté front mais ses endpoints backend restent à implémenter).
+
+### GET /api/labo/models
+
+→ `{ "models": [{id, label, map50_95, imgsz, group}], "ocr_engines": [{id, label, group}] }`
+(`path` filtré côté serveur, jamais exposé au client). `group` = `"mien"` | `"tuteur"`.
+Modèles "★ Meilleur" (`best/yolo`, `best/ocr`) : pointeurs explicites vers
+`Application/models/bestYolo.pt` / `bestOCR.pt`, à mettre à jour à chaque nouvel
+entraînement jugé meilleur (fichiers suivis en git, cf. AI_MODELS.md).
+
+### POST /api/labo/detect (image, existant)
+
+Entrée `multipart/form-data` : `image`, `model_id` (un id, ou plusieurs séparés par
+des virgules → `run_detect_ensemble`), `ocr` (`"0"`/`"1"`), `ocr_engine`.
+
+```json
+// 200
+{ "time_ms": 81, "boxes": [{x,y,w,h,conf,cls}],
+  "annotated": "data:image/jpeg;base64,…" ,
+  "zones": [{index, box, conf, cls, crop, bic, valid, corrected, raw_text}],
+  "ocr": [{bic, valid, corrected, conf, raw_text}] }
+// 400 : { "error": "modèle inconnu : …" }
+```
+
+### POST /api/labo/detect-video (vidéo, ajouté 2026-09-18)
+
+Entrée `multipart/form-data` : soit `video` (fichier, extensions
+`.mp4/.avi/.mov/.mkv/.webm/.m4v`), soit `recording` (nom d'un fichier déjà présent dans
+`Application/backend/recordings/`, réservé au futur flux RTSP) ; `model_id` (**un seul**
+détecteur) ; `ocr_engine`. Réutilise `labo.run_detect()` + `labo.read_zones()` — même
+détection/OCR/validation ISO 6346 que l'image, aucune logique dupliquée.
+
+Réponse en streaming `application/x-ndjson` (une ligne JSON par événement) :
+
+```json
+{"type":"meta","orig_fps":27.5,"analysis_fps":5,"total_frames":207,"to_analyze":34,"width":478,"height":850,"duration":7.5}
+{"type":"progress","frame":36,"analyzed":6,"to_analyze":34,"pct":18,"proc_fps":9.6,"codes":0}
+{"type":"done","analyzed":34,"elapsed":4.2,"codes":[
+  {"bic":"CAIU6563528","valid":true,"corrected":true,"conf":0.732,"count":14,
+   "crop":"data:image/jpeg;base64,…","first_time":1.09,
+   "candidates":[…],"variants":[…]}
+]}
+{"type":"error","error":"vidéo illisible (codec non supporté ou fichier corrompu)"}
+```
+
+Échantillonnage : `VIDEO_ANALYSIS_FPS = 5` (constante `labo.py`), `cap.grab()` sur
+toutes les frames + `cap.retrieve()` seulement sur celles retenues — YOLO ne tourne
+JAMAIS sur une frame ignorée. Agrégation temporelle par code exact (vote de confiance)
+puis consolidation floue (`labo._consolidate_codes`, ≤3 caractères d'écart à longueur
+égale) pour fusionner les variantes OCR d'un même conteneur filmé en rafale, sans
+jamais fusionner deux conteneurs différents (comparaison toujours au représentant du
+cluster, jamais proche-en-proche).
+
+Testé de bout en bout sur une vidéo réelle (fournie par le tuteur) : `CAIU6563528`
+détecté sur 14/34 frames, chiffre de contrôle réparé automatiquement, `valid:true`.
+
+### RTSP (`/api/labo/rtsp/*`) — **non implémenté**
+
+Le front (`labo.html`, onglet Caméra RTSP) appelle déjà `connect` / `status` /
+`preview/<sid>` / `record/start` / `record/stop` / `disconnect`, mais ces routes et le
+module `rtsp.py` restent à construire (prochain chantier — cf. ROADMAP.md).
 
 ## Contrat cible des services IA (SPEC_V2 §8 — à implémenter)
 

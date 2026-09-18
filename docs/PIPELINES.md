@@ -1,6 +1,6 @@
 # PIPELINES — Flux Image / Vidéo
 
-> **Dernière mise à jour** : 2026-07-28
+> **Dernière mise à jour** : 2026-09-18
 
 ## Pipeline image (V1 — implémenté, en production)
 
@@ -84,7 +84,44 @@ Miroir du flux BIC mais **sans clé mathématique** : la plaque marocaine n'a pa
 de chiffre de contrôle → le juge de paix est la **forme**, plus faible, d'où le
 rôle accru de la validation humaine. Entrée `POST /api/scan-plaque`.
 
-## Pipeline vidéo (V2 — cible SPEC_V2 §7, non commencé)
+## Pipeline vidéo — état actuel (Labo, expérimental, 2026-09-18)
+
+Implémenté dans **`Application/backend/labo.py`** (`stream_video_detection`) et branché
+sur `POST /api/labo/detect-video` (`app.py`) — outil de dev/évaluation, **pas encore
+intégré à l'app de production** (`/scan`, `/api/scan`). Réutilise tel quel le pipeline
+image (`run_detect` + `read_zones`, étages 1-3 + validation ISO 6346 ci-dessus) :
+aucune logique YOLO/OCR dupliquée.
+
+```
+Vidéo importée (fichier, ou futur enregistrement RTSP)
+  ▼
+Échantillonnage FIXE 5 FPS (VIDEO_ANALYSIS_FPS)
+  │   cap.grab() sur TOUTES les frames (avance sans décoder, gratuit)
+  │   cap.retrieve() SEULEMENT sur la frame retenue (1 frame décodée / step)
+  ▼
+Pour chaque frame retenue : run_detect() (annotate=False) → read_zones()
+  │   = EXACTEMENT le même détecteur + la même boucle OCR que l'image
+  ▼
+Agrégation temporelle par code exact (vote : occurrences, meilleure confiance,
+  authentique > recalculé)
+  ▼
+Consolidation floue (_consolidate_codes, ≤3 caractères d'écart à longueur égale,
+  toujours comparé au représentant du cluster — jamais proche-en-proche)
+  ▼
+Liste de codes uniques, streamée en NDJSON (meta → progress × N → done)
+```
+
+**Ce que ce pipeline N'EST PAS** : il n'y a **aucun tracking d'objet** — chaque frame
+échantillonnée est traitée indépendamment (nouvelle détection à chaque fois), la
+déduplication se fait entièrement **a posteriori** sur les codes lus. C'est plus simple
+et plus robuste (pas de perte de piste si l'objet sort/rentre du cadre) mais coûte une
+inférence YOLO par frame échantillonnée — acceptable à 5 FPS sur GPU local, à
+reconsidérer avant un déploiement CPU/VPS.
+
+Testé de bout en bout sur vidéo réelle (matériel tuteur) : code `CAIU6563528` détecté
+sur 14/34 frames analysées, chiffre de contrôle réparé automatiquement.
+
+## Pipeline vidéo — cible SPEC_V2 §7 (tracking, non commencé)
 
 ```
 Flux vidéo (caméra téléphone, puis RTSP en V3)
@@ -100,16 +137,23 @@ Sélection de frame stable/nette par objet suivi
 
 **[EXIGENCE SPEC]** L'OCR n'est jamais exécuté sur chaque frame : le tracking suit
 l'objet, la lecture est déclenchée **une seule fois** sur une frame choisie.
-C'est le cœur de la maîtrise de latence (risque R1).
+C'est le cœur de la maîtrise de latence (risque R1). **Écart avec l'état actuel** :
+le Labo réexécute OCR sur chaque frame échantillonnée (pas de cache par objet suivi) —
+acceptable en labo (dédoublonné après coup), à corriger avant toute intégration
+production à fort volume.
 
 **[EXIGENCE SPEC]** Le pipeline aval est **commun** image/vidéo (invariant I2) —
-la couche capture normalise, rien d'autre ne change.
+la couche capture normalise, rien d'autre ne change. **Déjà respecté** par le Labo
+(même `run_detect`/`read_zones` que l'image).
 
-### Briques à construire pour V2
+### Briques à construire pour la cible SPEC_V2
 
-| Brique | Piste technique |
+| Brique | Statut |
 |---|---|
-| Capture vidéo web | getUserMedia + envoi de frames échantillonnées |
-| Tracking | ByteTrack/BoT-SORT (intégrés à Ultralytics `model.track()`) |
-| Sélection de frame | score de netteté (variance du Laplacien) + stabilité bbox |
-| Anti-redéclenchement | un objet suivi = une seule lecture (cache par track_id) |
+| Échantillonnage FPS maîtrisé | ✅ fait (Labo, 5 FPS fixe configurable) |
+| Réutilisation du pipeline aval image | ✅ fait (Labo) |
+| Capture vidéo web (getUserMedia) | à faire |
+| Tracking (ByteTrack/BoT-SORT, `model.track()`) | à faire |
+| Sélection de frame par netteté (variance du Laplacien) + stabilité bbox | à faire |
+| Anti-redéclenchement (un objet suivi = une seule lecture, cache par track_id) | à faire — le Labo s'en passe (dédup a posteriori) |
+| Intégration dans l'app de production (`/scan`) | à faire |
