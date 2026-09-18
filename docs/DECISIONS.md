@@ -138,3 +138,88 @@ inconnue) — toujours une réponse JSON propre, jamais de crash ni de blocage. 
 testé** : connexion à une vraie caméra/téléphone (aucun matériel RTSP disponible
 pendant le développement) — le flux live, l'enregistrement réel et l'analyse de bout
 en bout restent à valider par l'utilisateur avant de considérer ce chantier clos.
+
+## ADR-21 — Extension "BIC Detector" : prototype fin-à-fin sans logique dupliquée (2026-09-18)
+
+**Contexte** : transformer le Labo en interface finale pour l'utilisateur — une
+extension de navigateur plutôt qu'une page web de plus, pour un usage terrain (icône
+dans la barre d'outils, pas un onglet à retrouver).
+
+**Décision** :
+- Tout le code vit dans `Application/Extension/`, jamais mélangé à `frontend/` (qui
+  reste l'app de production, inchangée) ni au backend.
+- **Aucun endpoint backend créé** : les 9 routes `/api/labo/*` existantes (Tasks 1/2)
+  couvrent tout le parcours RTSP → live → enregistrement → analyse. Un seul fichier,
+  `src/services/backend-api.js`, concentre tous les appels réseau — le reste de
+  l'extension ignore l'existence de fetch/HTTP.
+- Manifest V3, `host_permissions` limité à `localhost:5000`/`127.0.0.1:5000` — Chrome/
+  Edge/Brave/Opera/Vivaldi nativement ; Firefox nécessitera un ajustement du
+  `background` (event page vs service worker), non fait pour ce prototype Chrome-first.
+- Le flux MJPEG (`<img src="…/rtsp/preview/<sid>">`) et le flux NDJSON
+  (`/api/labo/detect-video`, `ReadableStream` + `TextDecoder`) sont consommés tels
+  quels — aucun protocole supplémentaire (pas de WebSocket) n'était nécessaire.
+- Filtre "masquer les lectures incertaines" **repris à l'identique de `labo.html`**
+  (`c.valid || c.count >= 2`), pas réinventé — cohérence entre les deux outils.
+
+**Conséquences (testé)** : Phase B/C validées avec de vraies requêtes contre le backend
+(URL RTSP injoignable → erreur affichée correctement, état UI cohérent après échec).
+Phase E validée avec des **données réelles** : une vidéo du tuteur placée dans
+`Application/backend/recordings/` (simulant un enregistrement RTSP) analysée via le
+popup → 6 candidats de code retournés, `CAIU6563528` en tête (14/34 frames, authentique)
+— confirme au passage une limite déjà connue de `_consolidate_codes` (ADR-19) : des
+variantes à un seul vote peuvent chacune passer la validation ISO 6346 individuellement
+et ne sont filtrées que par le nombre de votes, pas par la seule validité. **Non testé** :
+chargement réel comme extension Chrome (`chrome://extensions`) — impossible dans
+l'environnement de développement sandboxé ; popup vérifié en le servant comme page
+statique normale (mêmes fichiers, mêmes appels réseau, juste hors du cadre `chrome-extension://`).
+**Non implémenté** : Phase F (gestion d'erreurs exhaustive au-delà du cas RTSP testé,
+tests formels, doc utilisateur finale).
+
+## ADR-22 — RTSP dans l'app de production : réutilise la détection client (ONNX), pas le pipeline serveur du Labo (2026-09-19)
+
+**Contexte** : ajouter la caméra RTSP à `frontend/capture.html` (app de production,
+pas le Labo). Deux pipelines de détection coexistent dans le projet et il fallait
+choisir lequel réutiliser :
+1. **Labo/Extension** : frames envoyées au serveur, YOLO `.pt` (ultralytics) + EasyOCR/
+   char-reader **côté serveur**, GPU local requis pour rester interactif.
+2. **`capture.html` (prod)** : détection YOLO `.onnx` **côté navigateur**
+   (onnxruntime-web, `webdetect.js`), seul le crop de la zone détectée part vers le
+   serveur pour l'OCR — conçu pour un VPS CPU sans GPU (ADR-7).
+
+**Décision** :
+- `capture.html` réutilise sa **propre** détection client (`detect()` de
+  `webdetect.js`, inchangée) — **pas** le pipeline serveur du Labo. La seule
+  différence entre les 4 sources (photo importée, vidéo importée, webcam,
+  RTSP) est l'élément DOM source passé à `detect()` (`<img>`/`<video>`) ;
+  `ctx.drawImage()` accepte les deux indifféremment, donc `preprocess()` n'a
+  **pas eu à changer**.
+- Le **flux RTSP lui-même** reste géré par le backend local (`rtsp.py`, ADR-20,
+  endpoints `/api/labo/rtsp/*` déjà existants, **aucun nouvel endpoint créé**) : le
+  navigateur ne sait pas lire du RTSP nativement, un relais MJPEG était nécessaire de
+  toute façon. `capture.html` consomme ce relais comme une source vidéo de plus, sans
+  jamais faire tourner de YOLO/OCR côté serveur.
+- `RTSP_BACKEND_URL` (constante dans `capture.js`) pointe en dur vers
+  `http://localhost:5000`, **indépendamment** de `apiBase()` (qui continue de
+  pointer vers la prod pour `/api/scan`, `/api/confirm`, etc.) : un VPS distant ne
+  peut structurellement pas joindre une adresse RTSP sur le réseau local du
+  téléphone (LAN du VPS ≠ LAN du téléphone) — ce n'est pas contournable sans
+  changer l'architecture réseau (tunnel/VPN), hors périmètre ici.
+- `<img id="rtsp-preview" crossorigin="anonymous">` : nécessaire pour que
+  `ctx.getImageData()` (appelé par `webdetect.js` à chaque frame) ne lève pas
+  `SecurityError` sur une image cross-origin (page servie depuis un domaine,
+  flux depuis `localhost:5000`). Validé par test : chargement d'une image
+  cross-origin réelle depuis le backend + lecture de pixels réussie.
+- `doScan()` généralisée pour lire `state.captured` (source/dimensions) au lieu de
+  `video.videoWidth` codé en dur — changement strictement compatible (les modes
+  existants avaient déjà `state.captured.source === video`), nécessaire pour que
+  RTSP (source = `<img>`) partage le même code de gel/scan que webcam/vidéo.
+
+**Conséquences** : testé — chargement de la page (3ᵉ carte "Caméra RTSP" intégrée à
+la grille existante), ouverture/fermeture du panneau de connexion, erreur propre sur
+URL injoignable (8,3 s, même comportement que le Labo), et surtout la lecture de
+pixels cross-origin (le risque technique principal) validée avec une vraie requête
+contre le backend. **Non testé** : connexion à une vraie caméra RTSP dans cette page
+précise (même limite matérielle que ADR-20/21) — le Labo, lui, a été validé avec une
+vraie caméra par l'utilisateur. Aucune régression sur les 3 modes existants (import
+photo, import vidéo, webcam) : leur code n'a été touché que pour la généralisation
+de `doScan()`, comportement identique par construction.

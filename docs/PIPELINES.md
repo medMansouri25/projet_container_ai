@@ -1,6 +1,6 @@
 # PIPELINES — Flux Image / Vidéo
 
-> **Dernière mise à jour** : 2026-09-18
+> **Dernière mise à jour** : 2026-09-19
 
 ## Pipeline image (V1 — implémenté, en production)
 
@@ -57,6 +57,30 @@ Validation humaine : bouton Confirmer par carte           [invariant I3]
 Si aucun code lisible → repli sur l'OCR de la meilleure zone (comportement V1).
 Le statut distingue « Aucun code lisible » de « Serveur OCR injoignable ».
 Cas d'usage : photos de parc avec plusieurs conteneurs empilés visibles.
+
+### Source caméra RTSP dans `capture.html` (ADR-22, 2026-09-19)
+
+4ᵉ source pour la même détection client ci-dessus (à côté de photo/vidéo importées et
+webcam) : le backend **local** (`rtsp.py`, ADR-20) relaie un flux RTSP en MJPEG,
+consommé par `capture.html` via `<img crossorigin="anonymous">`. `detect()`
+(`webdetect.js`) dessine sa source via `ctx.drawImage()` — identique pour un
+`<video>` ou un `<img>`, donc **aucune détection serveur ajoutée**, seulement une
+source de frames de plus pour le pipeline ONNX déjà en place.
+
+```
+Téléphone (rtsp://…)
+  ▼
+Backend LOCAL — rtsp.py (ADR-20) : relais MJPEG, jamais de YOLO/OCR ici
+  ▼
+<img id="rtsp-preview"> dans capture.html (backend local requis, apiBase() reste la prod)
+  ▼
+── même pipeline client que webcam/vidéo (ONNX local → crop → OCR serveur) ──
+```
+
+**[CONTRAINTE RÉSEAU]** Ne fonctionne que si le navigateur peut joindre
+`http://localhost:5000` — un VPS de production distant ne peut pas atteindre une
+adresse RTSP sur le réseau local du téléphone. Cette source restera donc toujours un
+usage **poste local**, jamais accessible depuis `containerai-marsa-maroc.online` tel quel.
 
 ## Pipeline plaque (service Plaque — pipeline construit 2026-07-18)
 

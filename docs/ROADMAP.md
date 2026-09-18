@@ -1,6 +1,6 @@
 # ROADMAP — Évolution du projet
 
-> **Dernière mise à jour** : 2026-09-18
+> **Dernière mise à jour** : 2026-09-19
 
 ## Trajectoire (SPEC_V2 §4)
 
@@ -43,13 +43,30 @@ extension **enfichable** de la capture (invariant I10).
   matériel disponible) — à valider par l'utilisateur.
   Les deux chantiers reconstruits le 18/09 après perte du disque local ayant porté le
   branchement initial (jamais poussé sur GitHub).
+- **Extension "BIC Detector" — prototype B→E** (`Application/Extension/`, ADR-21) :
+  Manifest V3, popup connecté au backend local (aucun nouvel endpoint), parcours complet
+  RTSP → live → enregistrement → analyse → résultats filtrables. Phase E validée avec
+  une vraie vidéo (simulant un enregistrement RTSP). Non testé : chargement comme
+  vraie extension Chrome, connexion à une caméra réelle (mêmes limites que le Labo RTSP).
+- **RTSP validé avec une vraie caméra** (utilisateur, 2026-09-18 soir) : un enregistrement
+  réel (378 frames, 60 FPS, 1080×1920) confirme que le Labo fonctionne de bout en bout
+  avec du matériel réel — ADR-20/21 partiellement dé-risqués.
+- **Copier un code BIC** (Labo + Extension, 2026-09-19) : bouton 📋 à côté de chaque code
+  affiché (image, galerie de zones, vidéo, extension), `navigator.clipboard.writeText`.
+- **Caméra RTSP dans `capture.html` (app de production)** (ADR-22, 2026-09-19) : 4ᵉ
+  source pour la détection client existante (ONNX navigateur), backend local requis
+  (contrainte réseau structurelle — VPS ≠ LAN téléphone). Validé : chargement de page,
+  panneau RTSP, gestion d'erreur, lecture de pixels cross-origin. Non testé : vraie
+  caméra dans cette page précise.
+- **`lancer_tout.bat`** : script racine qui démarre le backend local et ouvre Labo +
+  application (prod) + dossier de l'extension.
 
 ## 🔜 Prochaines étapes (ordre suggéré)
 
 | # | Chantier | Contenu | Dépendances |
 |---|---|---|---|
-| 1a | **Validation RTSP réelle** | Tester `/labo` avec une vraie caméra/téléphone RTSP (connexion, live, enregistrement, analyse) — non fait faute de matériel pendant le dev | aucune |
-| 1b | **Extension navigateur "BIC Detector"** | interface finale (RTSP → live → enregistrement → analyse → résultats), communique avec le backend local existant, sans dupliquer YOLO/OCR | 1a (réutilise les endpoints RTSP, à valider d'abord) |
+| 1a | **Validation matérielle réelle (extension + capture.html)** | Charger l'extension dans Chrome (`chrome://extensions`) et tester la caméra RTSP de `capture.html`, avec une vraie caméra/téléphone (le Labo, lui, est déjà validé avec du matériel réel) | aucune |
+| 1b | **Extension Phase F** | Gestion d'erreurs exhaustive (backend indisponible, session expirée, vidéo invalide…), design final, tests, doc utilisateur | 1a |
 | 1c | **V2 vidéo — tracking réel** | `model.track()` (ByteTrack), sélection de frame nette, OCR **unique** par objet suivi (le Labo actuel réexécute l'OCR par frame échantillonnée) | 1a/1b validés |
 | 2 | **Extraction service API Container** | sortir le pipeline conteneur en service au contrat SPEC (image→JSON) ; l'app devient orchestrateur | facilite 3-5 |
 | 3 | **API Plaque** | détection + lecture plaque (nouveau format marocain) | **Q2 : dataset** |

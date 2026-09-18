@@ -1,6 +1,6 @@
 # API_CONTRACTS — Contrats REST
 
-> **Dernière mise à jour** : 2026-09-18 · Base : `https://api.containerai-marsa-maroc.online`
+> **Dernière mise à jour** : 2026-09-19 · Base : `https://api.containerai-marsa-maroc.online`
 
 ## API actuelle (V1, implémentée dans `Application/backend/app.py`)
 
@@ -167,6 +167,10 @@ Testé de bout en bout sur une vidéo réelle (fournie par le tuteur) : `CAIU656
 détecté sur 14/34 frames, chiffre de contrôle réparé automatiquement, `valid:true`.
 
 ### RTSP (`/api/labo/rtsp/*`, ajouté 2026-09-18)
+
+Réutilisé tel quel (aucun nouvel endpoint) par `frontend/capture.html` — caméra RTSP
+de l'app de production, qui pointe vers ces routes en LOCAL (`RTSP_BACKEND_URL` dans
+`capture.js`, indépendant de `apiBase()`/prod) — voir ADR-22.
 
 Source caméra découplée de YOLO/OCR (`rtsp.py`) : aperçu live MJPEG, enregistrement
 `.mp4`, réinjecté dans `/api/labo/detect-video` (paramètre `recording=`, cf. ci-dessus)

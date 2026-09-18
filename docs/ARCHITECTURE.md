@@ -1,6 +1,6 @@
 # ARCHITECTURE — Architecture logicielle
 
-> **Dernière mise à jour** : 2026-09-18
+> **Dernière mise à jour** : 2026-09-19
 
 ## Architecture actuelle (V1 en production)
 
@@ -34,12 +34,24 @@ Navigateur / téléphone
 
 | Composant | Rôle | Fichiers |
 |---|---|---|
-| **Front** | Scanner (upload + caméra getUserMedia), validation, historique, dashboard | `frontend/` |
+| **Front** | Scanner + Capture passage (upload image/vidéo, caméra getUserMedia, **caméra RTSP**), validation, historique, dashboard | `frontend/` |
 | **Backend Flask** | Routes HTML (usage direct) + **API JSON** (front Vercel) | `Application/backend/app.py` |
 | **Pipeline détection** | 3 étages : conteneur → zone BIC → lecture | `Application/backend/pipeline/` |
 | **Persistance** | Table `scans` (dossiers validés) | `Application/backend/db.py` |
 | **ML tooling** | dataset versionné, entraînement, évaluation, benchmarks | `Application/ml/` |
 | **Labo** (dev, local uniquement — jamais déployé sur le VPS) | comparaison de modèles, image/vidéo/RTSP, écrit **jamais** dans PostgreSQL | `Application/backend/labo.py`, `labo.html`, `rtsp.py` (source caméra découplée de YOLO/OCR) |
+| **Extension "BIC Detector"** (prototype, `Application/Extension/`) | Interface finale RTSP → live → enregistrement → analyse, pilote le backend local via HTTP | `manifest.json` (Manifest V3), `src/popup/`, `src/services/backend-api.js` (seul point d'appel réseau) — voir [Extension/README.md](../Application/Extension/README.md) |
+
+### Deux pipelines de détection distincts (ADR-22)
+
+`capture.html` (prod) détecte **côté navigateur** (ONNX/onnxruntime-web,
+`frontend/js/webdetect.js`) — conçu pour le VPS CPU (ADR-7), seul le crop OCR part au
+serveur. Le Labo (`/labo`) détecte **côté serveur** (YOLO `.pt`/ultralytics,
+`Application/backend/labo.py`) — nécessite un GPU local, outil de dev uniquement.
+La caméra RTSP de `capture.html` (ADR-22) réutilise le **relais MJPEG** du backend
+local (`rtsp.py`, ADR-20) mais la **détection** reste côté navigateur — elle ne
+déclenche jamais le pipeline serveur du Labo. Ne pas confondre les deux en modifiant
+l'un en pensant affecter l'autre.
 
 ### Séparation actuelle vs invariant I1 (SPEC_V2)
 

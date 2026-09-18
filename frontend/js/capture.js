@@ -12,6 +12,12 @@ const octx    = overlay.getContext("2d");
 const video   = el("video");
 const photo   = el("photo");
 
+// Caméra RTSP : source réseau locale (téléphone), jamais joignable depuis le
+// VPS de production — le backend qui gère /api/labo/rtsp/* doit tourner sur
+// CETTE machine (voir lancer_tout.bat), indépendamment de apiBase() qui
+// continue de pointer vers la prod pour le scan/OCR/confirmation.
+const RTSP_BACKEND_URL = "http://localhost:5000";
+
 const state = {
   target:        "conteneur",
   sessions:      {},
@@ -23,6 +29,8 @@ const state = {
   videoMode:     false,
   previewOnly:   false,
   cameraMode:    false,       // true = flux caméra continu (ANPR)
+  rtspMode:      false,       // true = flux caméra RTSP continu (ANPR, source = img MJPEG)
+  rtspSession:   null,        // session_id renvoyé par /api/labo/rtsp/connect
   cooldownUntil: 0,           // ms : auto-capture inhibée jusqu'à ce timestamp
   ocrPending:    0,           // nb de requêtes OCR en vol
   dossierId:     null,        // dossier de passage courant (Mission 6)
@@ -609,6 +617,138 @@ async function loopWebcam(s) {
   tick();
 }
 
+/* ── MODE 4 : Caméra RTSP (téléphone distant, backend local) ──
+   Même logique ANPR que la caméra locale (loopWebcam), mais la source de
+   chaque frame est l'<img> qui reçoit le flux MJPEG relayé par le backend
+   (/api/labo/rtsp/preview/<sid>) au lieu d'un <video> getUserMedia. `detect()`
+   dessine sa source via ctx.drawImage(), qui accepte indifféremment un
+   <video> ou un <img> — aucune modification de webdetect.js nécessaire. */
+
+el("mode-rtsp").addEventListener("click", () => {
+  clearError(); reset();
+  el("rtsp-panel").hidden = false;
+});
+
+el("mode-import").addEventListener("click", () => {
+  el("rtsp-panel").hidden = true;
+});
+
+el("rtsp-connect-btn").addEventListener("click", async () => {
+  const url = el("rtsp-url-input").value.trim();
+  if (!url) { el("rtsp-status").textContent = "Adresse RTSP manquante."; return; }
+  if (!url.toLowerCase().startsWith("rtsp://")) {
+    el("rtsp-status").textContent = "L'adresse doit commencer par rtsp://"; return;
+  }
+  el("rtsp-connect-btn").disabled = true;
+  el("rtsp-status").textContent = "Connexion…";
+  try {
+    const fd = new FormData();
+    fd.append("url", url);
+    const r = await fetch(`${RTSP_BACKEND_URL}/api/labo/rtsp/connect`, { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    state.rtspSession = d.session;
+    el("rtsp-status").textContent = `Connectée · ${d.resolution || "?"} · ${d.fps ?? "?"} FPS`;
+    await startRtspMode();
+  } catch (e) {
+    el("rtsp-status").textContent = `Échec : ${e.message} (backend local lancé ? lancer_tout.bat)`;
+  } finally {
+    el("rtsp-connect-btn").disabled = false;
+  }
+});
+
+async function startRtspMode() {
+  state.rtspMode = true;
+  el("rtsp-panel").hidden = true;
+  showActions();
+  el("capture-btn-label").textContent = "Forcer la capture";
+  el("detection-log").hidden = false;
+  el("det-count").textContent = "0";
+
+  const img = el("rtsp-preview");
+  img.src = `${RTSP_BACKEND_URL}/api/labo/rtsp/preview/${state.rtspSession}?t=${Date.now()}`;
+
+  el("capture-btn").hidden = false;
+  el("stop-btn").hidden    = false;
+  el("scan-btn").hidden    = false;
+  el("scan-btn").disabled  = true;
+  loopRtspDetect();
+
+  try {
+    await session();
+    el("model-status").textContent = "modèle prêt ✓";
+    setTimeout(() => { if (!state.ocrPending) el("model-status").textContent = ""; }, 2000);
+    loadExtraSessions();
+  } catch (e) {
+    el("model-status").textContent = "";
+    console.warn("[capture] YOLO local indisponible sur RTSP :", e.message);
+  }
+}
+
+/* Ferme la session RTSP côté backend (best-effort, ne bloque jamais l'UI). */
+function disconnectRtsp() {
+  if (!state.rtspSession) return;
+  const fd = new FormData();
+  fd.append("session", state.rtspSession);
+  fetch(`${RTSP_BACKEND_URL}/api/labo/rtsp/disconnect`, { method: "POST", body: fd }).catch(() => {});
+  state.rtspSession = null;
+  el("rtsp-preview").src = "";
+}
+
+/* Boucle de détection sur le flux RTSP — copie de loopWebcam() avec l'<img>
+   MJPEG comme source (même multi-modèles, même auto-capture ANPR). */
+async function loopRtspDetect() {
+  const img = el("rtsp-preview");
+  const tick = async () => {
+    if (!state.rtspMode) { el("stop-btn").hidden = true; return; }
+    if (!img.naturalWidth || !img.naturalHeight) {
+      state.rafId = requestAnimationFrame(tick); return;
+    }
+    const W = img.naturalWidth, H = img.naturalHeight;
+    const s = state.sessions[state.target];
+
+    if (!s) {   // modèle pas encore prêt : simple aperçu
+      drawFrame(img, W, H, []);
+      state.captured = { source: img, w: W, h: H };
+      state.rafId = requestAnimationFrame(tick);
+      return;
+    }
+
+    try {
+      const cfg = DETECT_CFG[state.target];
+      const primary = await detect(s, img, W, H, { numClasses: cfg.numClasses, conf: cfg.conf });
+      const primaryBoxes = primary.boxes.map(b => ({ ...b, boxColor: cfg.color, className: cfg.label }));
+      state.allBoxes[state.target] = primary.box;
+
+      const extraBoxes = [];
+      for (const [key, sess] of Object.entries(extraSessions)) {
+        if (!sess) continue;
+        const m = DETECT_CFG[key];
+        try {
+          const r = await detect(sess, img, W, H, { numClasses: m.numClasses, conf: m.conf });
+          r.boxes.forEach(b => extraBoxes.push({ ...b, boxColor: m.color, className: m.label }));
+          state.allBoxes[key] = r.box;
+        } catch { state.allBoxes[key] = null; }
+      }
+
+      state.lastFrameBoxes = [...primaryBoxes, ...extraBoxes];
+      drawFrame(img, W, H, state.lastFrameBoxes);
+      updateScanBtn();
+      setGuide(primary.guide.state);
+      state.captured    = { source: img, w: W, h: H };
+      state.detectedBox = primary.box;
+      state.goodStreak  = primary.guide.capture ? state.goodStreak + 1 : 0;
+      if (state.goodStreak >= 5) { state.goodStreak = 0; autoCapture(); }
+    } catch (e) {
+      // erreur d'inférence ponctuelle (frame en cours de remplacement, etc.) :
+      // garder l'aperçu, ne pas casser la boucle.
+      drawFrame(img, W, H, []);
+    }
+    state.rafId = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
 /* Active le bouton Scan dès qu'au moins une classe est détectée. */
 function updateScanBtn() {
   const btn = el("scan-btn");
@@ -620,23 +760,29 @@ function updateScanBtn() {
 
 /* Fige la caméra, lance l'OCR ciblé sur chaque boîte, affiche le dossier. */
 async function doScan() {
-  if ((!state.cameraMode && !state.videoMode) || !video.videoWidth) return;
+  if ((!state.cameraMode && !state.videoMode && !state.rtspMode) || !state.captured) return;
 
-  // Snapshot propre AVANT d'arrêter le stream (sans annotations dessinées)
+  // Snapshot propre AVANT d'arrêter le flux (sans annotations dessinées).
+  // state.captured est déjà à jour à chaque tick (caméra/vidéo/RTSP) : lire
+  // sa source/dimensions plutôt que video.videoWidth rend ce code source-
+  // agnostique (fonctionne identiquement pour les 3 modes en direct).
+  const { source, w, h } = state.captured;
   const snap = document.createElement("canvas");
-  snap.width  = video.videoWidth;
-  snap.height = video.videoHeight;
-  snap.getContext("2d").drawImage(video, 0, 0);
+  snap.width  = w;
+  snap.height = h;
+  snap.getContext("2d").drawImage(source, 0, 0, w, h);
 
   const frozenBoxes    = [...state.lastFrameBoxes];
   const frozenAllBoxes = { ...state.allBoxes };
 
-  // Figer (caméra ou vidéo)
+  // Figer (caméra, vidéo ou RTSP)
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
   if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
   if (state.videoMode) video.pause();
+  if (state.rtspMode) disconnectRtsp();
   state.cameraMode = false;
   state.videoMode  = false;
+  state.rtspMode   = false;
   el("scan-btn").hidden    = true;
   el("capture-btn").hidden = true;
   el("stop-btn").hidden    = true;
@@ -1031,6 +1177,7 @@ function stopLive() {
   if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
   if (state.stream) { state.stream.getTracks().forEach((t) => t.stop()); state.stream = null; }
   if (state.videoMode) { video.pause(); video.src = ""; state.videoMode = false; }
+  if (state.rtspMode) { disconnectRtsp(); state.rtspMode = false; }
   el("stop-btn").hidden = true;
 }
 
@@ -1060,6 +1207,9 @@ function reset() {
   el("capture-btn-label").textContent = "Capturer cette image";
   el("scan-bic-input").value    = "";
   el("scan-plaque-input").value = "";
+  el("rtsp-panel").hidden        = true;
+  el("rtsp-status").textContent  = "";
+  el("rtsp-url-input").value     = "";
   octx.clearRect(0, 0, overlay.width, overlay.height);
   setGuide("aucun");
 }

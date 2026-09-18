@@ -93,8 +93,28 @@
           <span class="m-t" data-i18n="cap.realtime.t">Détection temps réel</span>
           <span class="m-d" data-i18n="cap.realtime.d">caméra en direct + repère de cadrage</span>
         </button>
+        <button type="button" class="mode-card" id="mode-rtsp">
+          <svg class="m-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8"/><path d="M2 16a5 5 0 0 1 4 4"/><line x1="2" x2="2.01" y1="20" y2="20"/></svg>
+          <span class="m-t">Caméra RTSP</span>
+          <span class="m-d">flux d'un téléphone — nécessite le backend local</span>
+        </button>
       </div>
       <input type="file" id="file-input" accept="image/*,video/*" hidden>
+
+      <!-- Connexion caméra RTSP : nécessite le backend Flask local (lancer_tout.bat),
+           le VPS de production ne peut pas joindre une adresse reseau locale. -->
+      <div class="card" id="rtsp-panel" hidden style="margin-top:1rem;padding:1rem;border:1px dashed #cbd5e1">
+        <p class="subtitle" style="margin-bottom:.6rem">
+          Sur ton téléphone, lance une appli de caméra RTSP (ex. « IP Webcam », « RTSP Camera Server »),
+          copie l'adresse du flux ici. Le téléphone doit être sur le même réseau que
+          l'ordinateur qui fait tourner le backend local.</p>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+          <input type="text" id="rtsp-url-input" class="value-input" style="max-width:none;flex:1;min-width:220px;font-size:1rem"
+                 placeholder="rtsp://192.168.1.20:554/stream">
+          <button type="button" class="btn btn-primary" id="rtsp-connect-btn">Connecter la caméra</button>
+        </div>
+        <p id="rtsp-status" class="subtitle" style="margin:.5rem 0 0"></p>
+      </div>
     </section>
 
     <!-- Zone de travail -->
@@ -117,6 +137,7 @@
         <canvas id="overlay" width="640" height="480" role="img" aria-label="Aperçu de détection"></canvas>
         <video id="video" muted playsinline></video>
         <img id="photo" alt="">
+        <img id="rtsp-preview" alt="" crossorigin="anonymous">
       </div>
       <div class="action-btns">
         <button type="button" class="btn btn-primary" id="capture-btn" hidden>

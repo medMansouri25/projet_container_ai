@@ -17,8 +17,8 @@ En production : **[containerai-marsa-maroc.online](https://containerai-marsa-mar
 |---|---|---|
 | **V1 — Image** | Scanner BIC : upload/caméra → détection → OCR → validation → historique + dashboard | ✅ **déployée en production** |
 | **V2 — Vidéo** | Import vidéo → échantillonnage 5 FPS → même pipeline que l'image → agrégation/déduplication des codes | 🧪 expérimental, dans le **Labo** (`/labo`), pas encore intégré à l'app de production |
-| **Caméra RTSP** | Téléphone en source caméra distante → aperçu live → enregistrement → pipeline vidéo | 🧪 implémenté dans le Labo, **non testé avec une vraie caméra** (pas de matériel disponible pendant le dev) |
-| **V3 — Extension navigateur** | Interface finale "BIC Detector" pilotant le backend local | 🔜 à construire |
+| **Caméra RTSP** | Téléphone en source caméra distante → aperçu live → enregistrement → pipeline vidéo | ✅ validé avec une vraie caméra dans le **Labo** · 🧪 aussi disponible dans `capture.html` (3ᵉ mode "Caméra RTSP", backend local requis — non testable en prod, contrainte réseau) |
+| **Extension "BIC Detector"** | Interface finale : RTSP → live → enregistrement → analyse → résultats | 🧪 prototype fonctionnel (`Application/Extension/`), non testé comme vraie extension Chrome ni avec caméra réelle |
 
 Détail complet, invariants et questions ouvertes : [SDD/SPEC_V2.md](SDD/SPEC_V2.md) ·
 suivi d'avancement : [docs/ROADMAP.md](docs/ROADMAP.md) · décisions d'architecture :
@@ -79,7 +79,8 @@ ProjetMarsa/
 │   ├── ml/                         ← dataset versionné, entraînement, évaluation, benchmarks
 │   ├── models/                     ← poids YOLO versionnés (best_vN.pt + metadata.json)
 │   ├── dataset/                    ← config YOLO (data.yaml, classes.json)
-│   └── reports/                    ← rapports d'entraînement/évaluation
+│   ├── reports/                    ← rapports d'entraînement/évaluation
+│   └── Extension/                  ← 🧩 extension navigateur "BIC Detector" (prototype), voir son propre README
 ├── frontend/                       ← front statique déployé sur Vercel (scanner, historique, dashboard)
 ├── SDD/SPEC_V2.md                  ← source de vérité de l'intention produit
 ├── docs/                           ← documentation vivante (12 documents, tenue à jour à chaque changement)
@@ -117,6 +118,12 @@ même — seule la persistance (historique/dashboard) est indisponible.
 python Application\backend\app.py
 ```
 → `http://localhost:5000`
+
+Ou, pour tout lancer d'un coup (backend + Labo + application + dossier de
+l'extension) :
+```bat
+lancer_tout.bat
+```
 
 | Page | Rôle |
 |---|---|
